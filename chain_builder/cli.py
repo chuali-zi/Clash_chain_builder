@@ -254,6 +254,35 @@ def cmd_list_presets(_: argparse.Namespace) -> None:
     console.print(table2)
 
 
+def cmd_find_core(args: argparse.Namespace) -> None:
+    from .core_locator import iter_candidates, locate_core, probe_version, searched_locations
+
+    if args.all:
+        table = Table(title="mihomo 内核候选")
+        table.add_column("路径", overflow="fold")
+        table.add_column("来源")
+        table.add_column("版本")
+        count = 0
+        for cand in iter_candidates():
+            table.add_row(cand.path, cand.source, probe_version(cand.path) or "[red]不可用[/]")
+            count += 1
+        if count:
+            console.print(table)
+        else:
+            console.print("[red]没有找到任何候选内核[/]")
+    else:
+        path, source, version = locate_core()
+        if path:
+            console.print(f"[green]内核:[/] {path}")
+            console.print(f"[green]来源:[/] {source}")
+            console.print(f"[green]版本:[/] {version or '未知'}")
+        else:
+            console.print("[red]未找到 mihomo 内核。已尝试:[/]")
+            for item in searched_locations():
+                console.print(f"  - {item}")
+            console.print("可设置环境变量 MIHOMO_BIN 指向内核可执行文件")
+
+
 def cmd_show_ruleset(args: argparse.Namespace) -> None:
     """Preview merged rules without building a full profile."""
     args.rules_file = getattr(args, "rules_file", None)
@@ -350,6 +379,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("presets", help="列出 config/ 预设与规则包")
     p.set_defaults(func=cmd_list_presets)
+
+    p = sub.add_parser("find-core", help="定位 mihomo 内核（排查用）")
+    p.add_argument("--all", action="store_true", help="列出所有候选而非只取第一个可用的")
+    p.set_defaults(func=cmd_find_core)
 
     p = sub.add_parser("show-ruleset", help="预览合并后的分流规则")
     p.add_argument("--preset", default="default")

@@ -135,6 +135,7 @@ def validate_config_file(cfg: dict) -> str:
     import tempfile
     from pathlib import Path
 
+    from .core_locator import NO_WINDOW_KW
     from .mihomo import find_mihomo
 
     binary = find_mihomo()
@@ -151,6 +152,7 @@ def validate_config_file(cfg: dict) -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
+            **NO_WINDOW_KW,
         )
         out = ((r.stdout or "") + (r.stderr or "")).strip()
         if r.returncode != 0 and "successful" not in out.lower():

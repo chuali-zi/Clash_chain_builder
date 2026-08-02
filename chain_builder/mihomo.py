@@ -1,7 +1,6 @@
 """Locate and run a temporary mihomo/clash-meta process."""
 from __future__ import annotations
 
-import os
 import shutil
 import socket
 import subprocess
@@ -11,28 +10,22 @@ from pathlib import Path
 import requests
 import yaml
 
-CANDIDATES = [
-    os.environ.get("MIHOMO_BIN", ""),
-    "mihomo",
-    "clash-meta",
-    "verge-mihomo",
-    "verge-mihomo-alpha",
-    r"C:\Program Files\Clash Verge\verge-mihomo.exe",
-    r"C:\Program Files\Clash Verge\verge-mihomo-alpha.exe",
+from .core_locator import (
+    NO_WINDOW_KW,
+    find_mihomo,
+    locate_core,
+    probe_version,
+    searched_locations,
+)
+
+__all__ = [
+    "find_mihomo",
+    "locate_core",
+    "probe_version",
+    "searched_locations",
+    "free_port",
+    "MihomoTemp",
 ]
-
-
-def find_mihomo() -> str | None:
-    for c in CANDIDATES:
-        if not c:
-            continue
-        p = Path(c)
-        if p.is_file():
-            return str(p)
-        found = shutil.which(c)
-        if found:
-            return found
-    return None
 
 
 def free_port() -> int:
@@ -47,8 +40,11 @@ class MihomoTemp:
     def __init__(self, config: dict, binary: str | None = None, ready_timeout: float = 20.0):
         self.binary = binary or find_mihomo()
         if not self.binary:
+            where = "\n".join(f"  - {x}" for x in searched_locations())
             raise RuntimeError(
-                "未找到 mihomo 内核。请安装 Clash Verge，或设置环境变量 MIHOMO_BIN"
+                "未找到 mihomo 内核。已尝试以下位置：\n"
+                f"{where}\n"
+                "请安装 Clash Verge / mihomo，或设置环境变量 MIHOMO_BIN 指向内核可执行文件"
             )
         self.ready_timeout = ready_timeout
         self.mixed_port = free_port()
@@ -90,6 +86,7 @@ class MihomoTemp:
             text=True,
             encoding="utf-8",
             errors="replace",
+            **NO_WINDOW_KW,
         )
         out = (test.stdout or "") + (test.stderr or "")
         if test.returncode != 0 and "successful" not in out.lower():
@@ -99,6 +96,7 @@ class MihomoTemp:
             [self.binary, "-f", str(self._cfg_path), "-d", str(self._tmpdir)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            **NO_WINDOW_KW,
         )
         deadline = time.time() + self.ready_timeout
         last_err = None

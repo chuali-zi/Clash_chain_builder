@@ -2,6 +2,9 @@
 
 用机场订阅节点做**第一跳（中转）**，用购买的 SOCKS5 落地做**第二跳**，一键生成可导入 [Clash Verge](https://github.com/clash-verge-rev/clash-verge-rev) / [mihomo](https://github.com/MetaCubeX/mihomo) 的链式 YAML。
 
+> 🔰 **第一次接触链式代理 / Clash？** 请先看带配图的 **[链式代理保姆级教程](./链式代理教程.md)**，
+> 从「Clash 为什么要读一个 YAML」讲起，本 README 更偏参数速查。
+
 默认策略（无额外参数）：
 
 | 流量 | 出口 |
@@ -49,13 +52,36 @@ License: [MIT](./LICENSE)（可自由使用、修改、分发）。
 |----|------|
 | Python | 3.9+（推荐 3.12） |
 | 依赖 | `pip install -r requirements.txt`（`pyyaml` / `requests` / `rich`） |
-| mihomo | 建议安装 Clash Verge（自动查找 `verge-mihomo*.exe`），或设置环境变量 `MIHOMO_BIN` |
+| mihomo | 装了 Clash Verge / mihomo 即可，自动定位（见下），实在找不到再设 `MIHOMO_BIN` |
 | 系统 | Windows / macOS / Linux；测速与验证需要能启动内核 |
 
 Windows 下若节点名乱码，可先执行：
 
 ```powershell
 $env:PYTHONIOENCODING = "utf-8"
+```
+
+### mihomo 内核自动定位
+
+工具会按从快到慢的顺序找内核，并用 `-v` 验证候选确实是 Meta 内核（GUI 主程序、非 Meta 的
+clash 不会被误选）：
+
+1. 环境变量 `MIHOMO_BIN` / `CLASH_META_BIN` / `CLASH_CORE_BIN` / `CLASH_BIN`（文件、目录或命令名皆可），
+   以及 `MIHOMO_HOME` / `CLASH_HOME` / `CLASH_DIR` / `CLASH_VERGE_DIR` 指定的目录
+2. 项目目录与当前工作目录（含 `bin/`、`core/`、`vendor/`）
+3. `PATH`
+4. Windows 注册表：卸载项的 `InstallLocation`、`App Paths`（Clash Verge / Nyanpasu 等装到非默认盘也能找到）
+5. 正在运行的 Clash 进程所在目录（GUI 在跑就能定位到它自带的内核）
+6. 常见安装位置：Program Files、`LocalAppData\Programs`、scoop、chocolatey、winget；
+   macOS 的 `/Applications`、Homebrew；Linux 的 `/opt`、`/usr/local/bin`、`~/.local/bin`
+7. 各本地磁盘根目录下的 `*clash*` / `*mihomo*` / `*verge*` 目录，以及 `Apps`、`Software`、`Tools`
+   这类常见便携软件父目录
+
+排查用：
+
+```bash
+python -m chain_builder find-core          # 显示选中的内核、来源、版本
+python -m chain_builder find-core --all    # 列出所有候选及其可用性
 ```
 
 ---
@@ -244,9 +270,9 @@ python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 | `--out` / `--out-dir` | 输出路径 / 目录 |
 | `--no-latency` | TUI 不测延迟 |
 | `--no-verify` | 跳过临时内核出口验证（不推荐） |
-| `MIHOMO_BIN` | 环境变量，指定 mihomo / verge-mihomo 路径 |
+| `MIHOMO_BIN` | 环境变量，指定 mihomo / verge-mihomo 路径（自动定位失败时才需要） |
 
-子命令：`wizard`（默认）、`build`、`parse-hop2`、`presets`、`show-ruleset`、`plugins`。
+子命令：`wizard`（默认）、`build`、`parse-hop2`、`presets`、`show-ruleset`、`plugins`、`find-core`。
 
 ---
 
@@ -313,7 +339,7 @@ clash/
 | 第二跳解析失败 | 用 `parse-hop2` 自测；推荐 `host:port:user:pass` |
 | 验证出口失败 | 第一跳延迟过高 / 落地凭证反了（会自动对调一次）/ 网关不可达 |
 | `assert_fail_closed_*` | 生成逻辑自检失败，属程序问题或规则被改坏 |
-| mihomo 找不到 | 安装 Clash Verge，或设 `MIHOMO_BIN` |
+| mihomo 找不到 | 先跑 `python -m chain_builder find-core --all` 看候选；仍找不到就设 `MIHOMO_BIN` |
 | Claude 仍露机场 IP | 确认用了生成的配置且走 CHAIN；检查是否未开系统代理/TUN；进程是否被规则命中 |
 | 国内站变慢 | 确认命中 DIRECT / `GEOSITE,CN`；必要时加域名到 `cn-direct.yaml` |
 
