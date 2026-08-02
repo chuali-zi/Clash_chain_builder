@@ -1,0 +1,119 @@
+id: anthropic-sidechannel
+name: Anthropic 侧信道 → HOP2（官方 network-config + 防漏）
+version: 1
+target: hop2
+priority: 310
+description: >
+  Claude Code / Desktop 会访问的第三方主机。不强制时，遥测/登录/更新
+  可能露出真实 IP 或机场 IP。默认预设包含本包以实现「奇怪用法也不漏」。
+  副作用：会劫持部分共享 SaaS（GCS / Sentry / Datadog / WorkOS 等）走 HOP2。
+sources:
+  - https://code.claude.com/docs/en/network-config（官方必达表）
+  - Claude Desktop CSP / Office add-in
+  - scout agents 2026-08
+
+rules:
+  # ========== 官方 network-config 明确列出 ==========
+  - DOMAIN,storage.googleapis.com
+  - DOMAIN,raw.githubusercontent.com
+  - DOMAIN,http-intake.logs.us5.datadoghq.com
+  - DOMAIN,browser-intake-us5-datadoghq.com
+  - DOMAIN,formulae.brew.sh
+
+  # ========== 安装 / 包管理（CLI npm 安装路径） ==========
+  - DOMAIN,registry.npmjs.org
+  - DOMAIN-SUFFIX,npmjs.org
+  - DOMAIN-SUFFIX,npmjs.com
+
+  # ========== 遥测 / 错误上报（宽捕获，防漏优先） ==========
+  - DOMAIN-SUFFIX,sentry.io
+  - DOMAIN-SUFFIX,datadoghq.com
+  - DOMAIN-SUFFIX,datadoghq.eu
+  - DOMAIN-SUFFIX,ddog-gov.com
+  - DOMAIN,browser-intake-datadoghq.com
+  - DOMAIN,rum.browser-intake-datadoghq.com
+  - DOMAIN,o1158394.ingest.us.sentry.io
+  - DOMAIN-KEYWORD,sentry
+  - DOMAIN-KEYWORD,datadoghq
+  - DOMAIN-KEYWORD,ddog
+
+  # ========== GitHub raw / user content（changelog 等） ==========
+  - DOMAIN-SUFFIX,githubusercontent.com
+  - DOMAIN-SUFFIX,github.com
+  - DOMAIN-SUFFIX,githubassets.com
+  - DOMAIN-SUFFIX,github.io
+
+  # ========== Feature flags / analytics（Desktop/CLI） ==========
+  - DOMAIN,cdn.growthbook.io
+  - DOMAIN-SUFFIX,growthbook.io
+  - DOMAIN,cdn.usefathom.com
+  - DOMAIN-SUFFIX,usefathom.com
+  - DOMAIN-SUFFIX,statsig.com
+  - DOMAIN-SUFFIX,statsigapi.net
+  - DOMAIN-SUFFIX,featuregates.org
+  - DOMAIN,api.segment.io
+  - DOMAIN-SUFFIX,segment.io
+  - DOMAIN-SUFFIX,segment.com
+
+  # ========== 客服组件 ==========
+  - DOMAIN,widget.intercom.io
+  - DOMAIN,js.intercomcdn.com
+  - DOMAIN-SUFFIX,intercom.io
+  - DOMAIN-SUFFIX,intercomcdn.com
+
+  # ========== 企业 SSO（WorkOS）/ Google 登录 ==========
+  - DOMAIN,api.workos.com
+  - DOMAIN-SUFFIX,workos.com
+  - DOMAIN-SUFFIX,workoscdn.com
+  - DOMAIN,accounts.google.com
+  - DOMAIN,oauth2.googleapis.com
+  - DOMAIN,www.googleapis.com
+
+  # ========== Cloudflare Turnstile / 登录挑战 ==========
+  - DOMAIN,challenges.cloudflare.com
+
+  # ========== GCS 宽捕获（安装器 / artifacts；误伤所有 GCS） ==========
+  - DOMAIN-SUFFIX,googleapis.com
+  - DOMAIN-SUFFIX,gstatic.com
+  - DOMAIN-KEYWORD,googleapis
+
+dns_policy_keys:
+  - storage.googleapis.com
+  - raw.githubusercontent.com
+  - +.githubusercontent.com
+  - +.github.com
+  - +.sentry.io
+  - +.datadoghq.com
+  - +.datadoghq.eu
+  - +.ddog-gov.com
+  - browser-intake-us5-datadoghq.com
+  - http-intake.logs.us5.datadoghq.com
+  - +.workos.com
+  - +.segment.io
+  - +.segment.com
+  - +.intercom.io
+  - +.intercomcdn.com
+  - +.statsig.com
+  - cdn.growthbook.io
+  - challenges.cloudflare.com
+  - accounts.google.com
+  - +.googleapis.com
+
+sniffer_force_domain:
+  - storage.googleapis.com
+  - raw.githubusercontent.com
+  - +.sentry.io
+  - +.datadoghq.com
+  - +.datadoghq.eu
+  - browser-intake-us5-datadoghq.com
+  - http-intake.logs.us5.datadoghq.com
+  - +.workos.com
+  - +.segment.io
+  - challenges.cloudflare.com
+  - +.googleapis.com
+
+notes: |
+  官方标明 Datadog 两项为可选遥测，可用 DISABLE_TELEMETRY 关闭，
+  但为「不能漏 IP」仍强制 HOP2。
+  googleapis.com / github.com 后缀误伤面大：这是防漏 trade-off。
+  若只要最小集合，可只保留官方表中的 exact DOMAIN 行。

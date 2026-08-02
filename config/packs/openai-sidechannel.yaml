@@ -1,0 +1,104 @@
+id: openai-sidechannel
+name: OpenAI 侧信道 → HOP2（登录/语音/遥测防漏）
+version: 1
+target: hop2
+priority: 305
+description: >
+  OpenAI Help allowlist 与社区列表中的第三方主机。默认纳入以防
+  ChatGPT 登录、Voice、计费、遥测露出真实 IP / 机场 IP。
+  误伤面：WorkOS / LiveKit / Stripe / Intercom / Statsig / Sentry 等。
+sources:
+  - OpenAI Help: Network recommendations for ChatGPT
+  - v2fly data/openai @ads
+  - scout agents 2026-08
+
+rules:
+  # ========== WorkOS（ChatGPT Business / Enterprise） ==========
+  - DOMAIN,cdn.workos.com
+  - DOMAIN,forwarder.workos.com
+  - DOMAIN,images.workoscdn.com
+  - DOMAIN,setup.workos.com
+  - DOMAIN,workos.imgix.net
+  - DOMAIN-SUFFIX,workos.com
+  - DOMAIN-SUFFIX,workoscdn.com
+
+  # ========== LiveKit Advanced Voice（共享基础设施） ==========
+  - DOMAIN,host.livekit.cloud
+  - DOMAIN,turn.livekit.cloud
+  - DOMAIN-SUFFIX,livekit.cloud
+  - DOMAIN,sfo3.turn.livekit.cloud
+
+  # ========== Statsig / feature gates ==========
+  - DOMAIN,api.statsig.com
+  - DOMAIN,events.statsigapi.net
+  - DOMAIN-SUFFIX,statsig.com
+  - DOMAIN-SUFFIX,statsigapi.net
+  - DOMAIN-SUFFIX,featuregates.org
+  - DOMAIN-SUFFIX,oaistatsig.com
+
+  # ========== Intercom / Stripe / 支付组件 ==========
+  - DOMAIN,js.intercomcdn.com
+  - DOMAIN-SUFFIX,intercom.io
+  - DOMAIN-SUFFIX,intercomcdn.com
+  - DOMAIN,js.stripe.com
+  - DOMAIN-SUFFIX,stripe.com
+  - DOMAIN-SUFFIX,stripe.network
+
+  # ========== Sentry / Datadog（OpenAI 项目 + 宽捕获） ==========
+  - DOMAIN,o33249.ingest.sentry.io
+  - DOMAIN,o207216.ingest.sentry.io
+  - DOMAIN,browser-intake-datadoghq.com
+  - DOMAIN,rum.browser-intake-datadoghq.com
+  - DOMAIN-SUFFIX,sentry.io
+  - DOMAIN-SUFFIX,datadoghq.com
+  - DOMAIN-SUFFIX,datadoghq.eu
+  - DOMAIN-KEYWORD,sentry
+  - DOMAIN-KEYWORD,datadoghq
+
+  # ========== Cloudflare challenge / RUM ==========
+  - DOMAIN,challenges.cloudflare.com
+  - DOMAIN,static.cloudflareinsights.com
+
+  # ========== Arkose / Qualtrics / Merge ==========
+  - DOMAIN,openai-api.arkoselabs.com
+  - DOMAIN-SUFFIX,arkoselabs.com
+  - DOMAIN,openai.qualtrics.com
+  - DOMAIN-SUFFIX,qualtrics.com
+  - DOMAIN,cdn.openaimerge.com
+  - DOMAIN-SUFFIX,openaimerge.com
+
+  # ========== 遗留 / 注册表 ==========
+  - DOMAIN,prodregistryv2.org
+
+  # ========== Apple App Attest（iOS ChatGPT，可选） ==========
+  - DOMAIN,humb.apple.com
+  - DOMAIN,register.appattest.apple.com
+
+dns_policy_keys:
+  - +.workos.com
+  - +.workoscdn.com
+  - +.livekit.cloud
+  - +.statsig.com
+  - +.statsigapi.net
+  - +.oaistatsig.com
+  - +.intercom.io
+  - +.stripe.com
+  - +.sentry.io
+  - +.datadoghq.com
+  - challenges.cloudflare.com
+  - openai-api.arkoselabs.com
+
+sniffer_force_domain:
+  - +.workos.com
+  - +.livekit.cloud
+  - +.oaistatsig.com
+  - +.sentry.io
+  - +.datadoghq.com
+  - challenges.cloudflare.com
+  - host.livekit.cloud
+  - turn.livekit.cloud
+
+notes: |
+  不要使用 DOMAIN-SUFFIX,auth0.com / azureedge.net / cloudflare.com
+  （黑名单式社区列表常见误伤）。本包只用 OpenAI 相关 exact 或必要后缀。
+  Voice 媒体 UDP:3478 动态 IP 无法靠域名穷尽，依赖 PROCESS + TUN。

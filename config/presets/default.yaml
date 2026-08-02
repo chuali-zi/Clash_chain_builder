@@ -1,0 +1,19 @@
+id: default
+name: 默认组合（AI→HOP2 / 国内→DIRECT / 其余→HOP1）
+version: 1
+description: >
+  Anthropic + OpenAI（含防漏侧信道）强制第二跳；
+  内网与国内常用站直连；其余境外走第一跳机场。
+compose:
+  - private-direct
+  - anthropic
+  - anthropic-sidechannel
+  - openai
+  - openai-sidechannel
+  - cn-direct
+match: hop1
+
+notes: |
+  合并时按各 pack.priority 降序排列 rules，再追加 MATCH,$HOP1。
+  若不想劫持 Sentry/Datadog/GCS 全局流量，可从 compose 去掉
+  anthropic-sidechannel / openai-sidechannel（会削弱防漏）。

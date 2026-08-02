@@ -1,0 +1,128 @@
+id: anthropic
+name: Anthropic / Claude → HOP2（一方域名，防漏核心）
+version: 1
+target: hop2
+priority: 320
+description: >
+  Claude Desktop / Claude Code / claude.ai / API / MCP / Artifacts 等
+  Anthropic 一方流量强制走第二跳。配合 anthropic-sidechannel 使用可达官方
+  network-config 要求的零侧信道漏出。
+sources:
+  - https://code.claude.com/docs/en/network-config
+  - v2fly/domain-list-community data/anthropic
+  - MetaCubeX geosite:ANTHROPIC
+  - ref/anthropic-*-jp-chain.yaml
+  - scout agents 2026-08
+
+rules:
+  # ========== 进程（最强兜底：IP 直连 / 未知域名也不漏） ==========
+  - PROCESS-NAME,claude.exe
+  - PROCESS-NAME,Claude.exe
+  - PROCESS-NAME,Claude Desktop.exe
+  - PROCESS-NAME,ClaudeDesktop.exe
+  - PROCESS-NAME,AnthropicClaude.exe
+  - PROCESS-NAME,claude-desktop.exe
+  - PROCESS-NAME,claude
+  - PROCESS-NAME,Claude
+  - PROCESS-NAME,claude-desktop
+  - PROCESS-NAME,ClaudeDesktop
+  - PROCESS-NAME,AnthropicClaude
+  - PROCESS-NAME-WILDCARD,*claude*
+  - PROCESS-NAME-WILDCARD,*Claude*
+  - PROCESS-PATH-REGEX,(?i).*[\\/](AnthropicClaude|Claude)([\\/].*)?\.(exe)$
+  - PROCESS-PATH-REGEX,(?i).*WindowsApps\\Claude_.*\\app\\Claude\.exe
+  - PROCESS-PATH-REGEX,(?i).*LocalAppData\\AnthropicClaude\\app-.*\\claude\.exe
+  - PROCESS-PATH-REGEX,(?i).*/Applications/Claude\.app/.*
+  - PROCESS-PATH-REGEX,(?i).*/Applications/Claude Desktop\.app/.*
+  - PROCESS-PATH-REGEX,(?i).*Claude\.app/Contents/MacOS/Claude
+  - PROCESS-PATH-REGEX,(?i).*/(usr/(local/)?bin|opt)/(claude|Claude|claude-desktop|ClaudeDesktop|AnthropicClaude).*
+
+  # ========== geosite ==========
+  - GEOSITE,ANTHROPIC
+
+  # ========== 一方 DOMAIN-SUFFIX（v2fly + 官方补全） ==========
+  - DOMAIN-SUFFIX,anthropic.com
+  - DOMAIN-SUFFIX,claude.ai
+  - DOMAIN-SUFFIX,claude.com
+  - DOMAIN-SUFFIX,claude.app
+  - DOMAIN-SUFFIX,claudeusercontent.com
+  - DOMAIN-SUFFIX,claudemcpclient.com
+  - DOMAIN-SUFFIX,claudemcpcontent.com
+  - DOMAIN-SUFFIX,clau.de
+
+  # 网站 CDN（geosite full:）
+  - DOMAIN-SUFFIX,servd-anthropic-website.b-cdn.net
+  - DOMAIN,servd-anthropic-website.b-cdn.net
+
+  # MCP 生态文档站（可选但常见）
+  - DOMAIN-SUFFIX,modelcontextprotocol.io
+
+  # ========== 关键一方主机（冗余保险 / 日志可读；suffix 已覆盖多数） ==========
+  - DOMAIN,api.anthropic.com
+  - DOMAIN,a-api.anthropic.com
+  - DOMAIN,a-cdn.anthropic.com
+  - DOMAIN,s-cdn.anthropic.com
+  - DOMAIN,assets-proxy.anthropic.com
+  - DOMAIN,mcp-proxy.anthropic.com
+  - DOMAIN,console.anthropic.com
+  - DOMAIN,www.anthropic.com
+  - DOMAIN,docs.anthropic.com
+  - DOMAIN,support.anthropic.com
+  - DOMAIN,status.anthropic.com
+  - DOMAIN,trust.anthropic.com
+  - DOMAIN,cli.anthropic.com
+  - DOMAIN,statsig.anthropic.com
+  - DOMAIN,sentry.anthropic.com
+  - DOMAIN,sso-metadata.anthropic.com
+  - DOMAIN,platform.claude.com
+  - DOMAIN,code.claude.com
+  - DOMAIN,docs.claude.com
+  - DOMAIN,support.claude.com
+  - DOMAIN,status.claude.com
+  - DOMAIN,download.claude.com
+  - DOMAIN,claude.ai
+  - DOMAIN,a.claude.ai
+  - DOMAIN,a-cdn.claude.ai
+  - DOMAIN,assets.claude.ai
+  - DOMAIN,downloads.claude.ai
+  - DOMAIN,pivot.claude.ai
+  - DOMAIN,bridge.claudeusercontent.com
+  - DOMAIN,www.claudeusercontent.com
+
+  # ========== 关键字兜底（宁可误伤） ==========
+  - DOMAIN-KEYWORD,anthropic
+  - DOMAIN-KEYWORD,claudeusercontent
+  - DOMAIN-KEYWORD,claudemcp
+  - DOMAIN-KEYWORD,claude
+  - DOMAIN-KEYWORD,cluade
+
+dns_policy_keys:
+  - geosite:ANTHROPIC
+  - +.anthropic.com
+  - +.claude.ai
+  - +.claude.com
+  - +.claude.app
+  - +.claudeusercontent.com
+  - +.claudemcpclient.com
+  - +.claudemcpcontent.com
+  - +.clau.de
+  - +.modelcontextprotocol.io
+  - servd-anthropic-website.b-cdn.net
+
+sniffer_force_domain:
+  - +.anthropic.com
+  - +.claude.ai
+  - +.claude.com
+  - +.claude.app
+  - +.claudeusercontent.com
+  - +.claudemcpclient.com
+  - +.claudemcpcontent.com
+  - +.clau.de
+  - servd-anthropic-website.b-cdn.net
+
+notes: |
+  官方 CLI allowlist 核心：api.anthropic.com / claude.ai / claude.com /
+  platform.claude.com / mcp-proxy.anthropic.com / downloads.claude.ai /
+  bridge.claudeusercontent.com / code.claude.com
+  Desktop 还需 assets-proxy.anthropic.com 与 *.claudeusercontent.com
+  （否则白屏）。侧信道见 anthropic-sidechannel.yaml。

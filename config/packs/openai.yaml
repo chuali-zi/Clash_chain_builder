@@ -1,0 +1,140 @@
+id: openai
+name: OpenAI / ChatGPT / Codex / Sora → HOP2（一方域名）
+version: 1
+target: hop2
+priority: 315
+description: >
+  ChatGPT Web/Desktop、OpenAI API、Codex、Sora、oaistatic/oaiusercontent
+  等一方流量强制第二跳。
+sources:
+  - v2fly/domain-list-community data/openai
+  - MetaCubeX geosite:openai
+  - OpenAI Help network recommendations
+  - blackmatrix7 / ACL4SSR OpenAI lists（筛除危险共享后缀后）
+  - scout agents 2026-08
+
+rules:
+  # ========== 进程 ==========
+  - PROCESS-NAME,ChatGPT.exe
+  - PROCESS-NAME,Codex.exe
+  - PROCESS-NAME,ChatGPT Classic.exe
+  - PROCESS-NAME,ChatGPT
+  - PROCESS-NAME,Codex
+  - PROCESS-NAME,codex
+  - PROCESS-NAME,codex.exe
+  - PROCESS-NAME-WILDCARD,*ChatGPT*
+  - PROCESS-NAME-WILDCARD,*chatgpt*
+  - PROCESS-PATH-REGEX,(?i).*ChatGPT.*\.(exe|app).*
+  - PROCESS-PATH-REGEX,(?i).*Codex.*\.(exe|app).*
+
+  # ========== geosite ==========
+  - GEOSITE,openai
+  - GEOSITE,OPENAI
+
+  # ========== 一方 DOMAIN-SUFFIX ==========
+  - DOMAIN-SUFFIX,openai.com
+  - DOMAIN-SUFFIX,chatgpt.com
+  - DOMAIN-SUFFIX,oaistatic.com
+  - DOMAIN-SUFFIX,oaiusercontent.com
+  - DOMAIN-SUFFIX,oaistatsig.com
+  - DOMAIN-SUFFIX,sora.com
+  - DOMAIN-SUFFIX,chat.com
+  - DOMAIN-SUFFIX,chatgpt.site
+  - DOMAIN-SUFFIX,crixet.com
+  - DOMAIN-SUFFIX,openai.org
+  - DOMAIN-SUFFIX,openai.fund
+
+  # Azure / Imgix / LiveKit（OpenAI 命名或官方 Advanced Voice）
+  - DOMAIN-SUFFIX,openaiapi-site.azureedge.net
+  - DOMAIN,openaiapi-site.azureedge.net
+  - DOMAIN-SUFFIX,openaicom.imgix.net
+  - DOMAIN,openaicom.imgix.net
+  - DOMAIN-SUFFIX,chatgpt.livekit.cloud
+  - DOMAIN,chatgpt.livekit.cloud
+
+  # CF 前端（v2fly）
+  - DOMAIN,openai.com.cdn.cloudflare.net
+  - DOMAIN,chat.openai.com.cdn.cloudflare.net
+
+  # ========== 关键主机（冗余） ==========
+  - DOMAIN,api.openai.com
+  - DOMAIN,eu.api.openai.com
+  - DOMAIN,beta.api.openai.com
+  - DOMAIN,platform.api.openai.com
+  - DOMAIN,chat.openai.com
+  - DOMAIN,auth.openai.com
+  - DOMAIN,auth0.openai.com
+  - DOMAIN,platform.openai.com
+  - DOMAIN,help.openai.com
+  - DOMAIN,status.openai.com
+  - DOMAIN,status.chatgpt.com
+  - DOMAIN,community.openai.com
+  - DOMAIN,developers.openai.com
+  - DOMAIN,cookbook.openai.com
+  - DOMAIN,pay.openai.com
+  - DOMAIN,videos.openai.com
+  - DOMAIN,ads.openai.com
+  - DOMAIN,academy.openai.com
+  - DOMAIN,cdn.openai.com
+  - DOMAIN,cdn.platform.openai.com
+  - DOMAIN,api.chatgpt.com
+  - DOMAIN,ws.chatgpt.com
+  - DOMAIN,webrtc.chatgpt.com
+  - DOMAIN,realtime.chatgpt.com
+  - DOMAIN,operator.chatgpt.com
+  - DOMAIN,learn.chatgpt.com
+  - DOMAIN,search.chatgpt.com
+  - DOMAIN,sora.chatgpt.com
+  - DOMAIN,codex.chatgpt.com
+  - DOMAIN,ios.chat.openai.com
+  - DOMAIN,android.chat.openai.com
+  - DOMAIN,desktop.chat.openai.com
+  - DOMAIN,tcr9i.chat.openai.com
+  - DOMAIN,cdn.oaistatic.com
+  - DOMAIN,persistent.oaistatic.com
+  - DOMAIN,files.oaiusercontent.com
+
+  # Azure blob / frontdoor（v2fly full:）
+  - DOMAIN,openaiassets.blob.core.windows.net
+  - DOMAIN,openaicom-api-bdcpf8c6d2e9atf6.z01.azurefd.net
+  - DOMAIN,openaicomproductionae4b.blob.core.windows.net
+  - DOMAIN,production-openaicom-storage.azureedge.net
+
+  # ========== 关键字 ==========
+  - DOMAIN-KEYWORD,openai
+  - DOMAIN-KEYWORD,chatgpt
+  - DOMAIN-KEYWORD,openaicom
+  - DOMAIN-KEYWORD,oaistatic
+  - DOMAIN-KEYWORD,oaiusercontent
+
+dns_policy_keys:
+  - geosite:openai
+  - +.openai.com
+  - +.chatgpt.com
+  - +.oaistatic.com
+  - +.oaiusercontent.com
+  - +.oaistatsig.com
+  - +.sora.com
+  - +.chat.com
+  - +.chatgpt.site
+  - +.crixet.com
+  - openaiapi-site.azureedge.net
+  - +.chatgpt.livekit.cloud
+  - ws.chatgpt.com
+
+sniffer_force_domain:
+  - +.openai.com
+  - +.chatgpt.com
+  - +.oaistatic.com
+  - +.oaiusercontent.com
+  - +.oaistatsig.com
+  - +.sora.com
+  - +.chat.com
+  - +.chatgpt.livekit.cloud
+  - openaiapi-site.azureedge.net
+  - ws.chatgpt.com
+
+notes: |
+  Codex ChatGPT 登录走 chatgpt.com/backend-api；API Key 走 api.openai.com。
+  Advanced Voice 另需 LiveKit + 动态 UDP IP（openai.com/chatgpt-voice.json），
+  进程规则可兜底 Desktop。侧信道见 openai-sidechannel.yaml。

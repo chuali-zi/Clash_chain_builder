@@ -1,0 +1,230 @@
+mixed-port: 7890
+allow-lan: true
+bind-address: '*'
+mode: rule
+log-level: info
+ipv6: true
+unified-delay: true
+tcp-concurrent: true
+find-process-mode: strict
+profile:
+  store-selected: true
+  store-fake-ip: true
+geox-url:
+  geoip: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat
+  geosite: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat
+  mmdb: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb
+dns:
+  enable: true
+  ipv6: true
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  use-hosts: true
+  default-nameserver:
+  - system
+  - 119.29.29.29
+  - 223.5.5.5
+  - 114.114.114.114
+  nameserver:
+  - https://223.5.5.5/dns-query#skip-cert-verify=true
+  - https://doh.pub/dns-query#skip-cert-verify=true
+  - https://dns.alidns.com/dns-query#skip-cert-verify=true
+  proxy-server-nameserver:
+  - https://223.5.5.5/dns-query#skip-cert-verify=true
+  - https://doh.pub/dns-query#skip-cert-verify=true
+  - https://dns.alidns.com/dns-query#skip-cert-verify=true
+  fake-ip-filter:
+  - '*.lan'
+  - '*.local'
+  - '*.localhost'
+  - '*.home.arpa'
+  - time.*.com
+  - ntp.*.com
+  - '*.msftconnecttest.com'
+  - '*.msftncsi.com'
+  respect-rules: true
+  nameserver-policy:
+    geosite:ANTHROPIC:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.anthropic.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.claude.ai:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.claude.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.claudeusercontent.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.claudemcpclient.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.openai.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.chatgpt.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.oaistatic.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.oaiusercontent.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    servd-anthropic-website.b-cdn.net:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.sentry.io:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.datadoghq.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.datadoghq.eu:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.ddog-gov.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    raw.githubusercontent.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    +.githubusercontent.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+    storage.googleapis.com:
+    - https://223.5.5.5/dns-query#AI-US167&skip-cert-verify=true
+    - https://doh.pub/dns-query#AI-US167&skip-cert-verify=true
+proxies:
+- name: US167 167.253.38.151 - SOCKS5 via JP
+  type: socks5
+  server: proxy.ipdeep.com
+  port: 7085
+  username: stcPCTUzAJ0qE
+  password: stcvuWV0eVkF8
+  udp: true
+  dialer-proxy: 2x专线-日本-2
+- name: 2x专线-日本-2
+  type: anytls
+  server: v4-aws-jp2.aikunapp.com
+  port: 7001
+  password: 8ff5b7aa-4364-45e2-a981-6b4adced4c06
+  udp: true
+  sni: 127.0.0.1
+  skip-cert-verify: true
+  client-fingerprint: chrome
+proxy-groups:
+- name: AI-US167
+  type: select
+  proxies:
+  - US167 167.253.38.151 - SOCKS5 via JP
+- name: DEFAULT-JP
+  type: select
+  proxies:
+  - 2x专线-日本-2
+rules:
+- DOMAIN-SUFFIX,local,DIRECT
+- DOMAIN-SUFFIX,lan,DIRECT
+- DOMAIN-SUFFIX,localhost,DIRECT
+- IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+- IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+- IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+- IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+- IP-CIDR,169.254.0.0/16,DIRECT,no-resolve
+- IP-CIDR,224.0.0.0/4,DIRECT,no-resolve
+- IP-CIDR6,::1/128,DIRECT,no-resolve
+- IP-CIDR6,fc00::/7,DIRECT,no-resolve
+- IP-CIDR6,fe80::/10,DIRECT,no-resolve
+- PROCESS-NAME,claude.exe,AI-US167
+- PROCESS-NAME,Claude.exe,AI-US167
+- PROCESS-NAME-WILDCARD,*claude*,AI-US167
+- PROCESS-NAME-WILDCARD,*Claude*,AI-US167
+- PROCESS-PATH-REGEX,(?i).*claude.*,AI-US167
+- GEOSITE,ANTHROPIC,AI-US167
+- DOMAIN-SUFFIX,anthropic.com,AI-US167
+- DOMAIN-SUFFIX,claude.ai,AI-US167
+- DOMAIN-SUFFIX,claude.com,AI-US167
+- DOMAIN-SUFFIX,claudeusercontent.com,AI-US167
+- DOMAIN-SUFFIX,claudemcpclient.com,AI-US167
+- DOMAIN,api.anthropic.com,AI-US167
+- DOMAIN,a-api.anthropic.com,AI-US167
+- DOMAIN,a-cdn.anthropic.com,AI-US167
+- DOMAIN,s-cdn.anthropic.com,AI-US167
+- DOMAIN,assets-proxy.anthropic.com,AI-US167
+- DOMAIN,mcp-proxy.anthropic.com,AI-US167
+- DOMAIN,console.anthropic.com,AI-US167
+- DOMAIN,www.anthropic.com,AI-US167
+- DOMAIN,platform.claude.com,AI-US167
+- DOMAIN,code.claude.com,AI-US167
+- DOMAIN,downloads.claude.ai,AI-US167
+- DOMAIN,bridge.claudeusercontent.com,AI-US167
+- DOMAIN,www.claudeusercontent.com,AI-US167
+- DOMAIN-SUFFIX,servd-anthropic-website.b-cdn.net,AI-US167
+- DOMAIN-KEYWORD,anthropic,AI-US167
+- DOMAIN-KEYWORD,claude,AI-US167
+- DOMAIN-KEYWORD,cluade,AI-US167
+- DOMAIN-SUFFIX,chatgpt.com,AI-US167
+- DOMAIN-SUFFIX,openai.com,AI-US167
+- DOMAIN-SUFFIX,oaistatic.com,AI-US167
+- DOMAIN-SUFFIX,oaiusercontent.com,AI-US167
+- DOMAIN-SUFFIX,openaiapi-site.azureedge.net,AI-US167
+- DOMAIN-KEYWORD,openai,AI-US167
+- DOMAIN-KEYWORD,chatgpt,AI-US167
+- DOMAIN,storage.googleapis.com,AI-US167
+- DOMAIN,raw.githubusercontent.com,AI-US167
+- DOMAIN-SUFFIX,githubusercontent.com,AI-US167
+- DOMAIN-SUFFIX,sentry.io,AI-US167
+- DOMAIN-KEYWORD,sentry,AI-US167
+- DOMAIN-SUFFIX,datadoghq.com,AI-US167
+- DOMAIN-SUFFIX,datadoghq.eu,AI-US167
+- DOMAIN-SUFFIX,ddog-gov.com,AI-US167
+- DOMAIN-KEYWORD,datadoghq,AI-US167
+- DOMAIN-KEYWORD,ddog,AI-US167
+- DOMAIN-SUFFIX,bilibili.com,DIRECT
+- DOMAIN-SUFFIX,bilivideo.com,DIRECT
+- DOMAIN-SUFFIX,moonshot.cn,DIRECT
+- DOMAIN-SUFFIX,moonshot.ai,DIRECT
+- DOMAIN-SUFFIX,zhipuai.cn,DIRECT
+- DOMAIN-SUFFIX,bigmodel.cn,DIRECT
+- DOMAIN-SUFFIX,deepseek.com,DIRECT
+- DOMAIN-SUFFIX,deepseek.cn,DIRECT
+- GEOSITE,CN,DIRECT
+- GEOIP,CN,DIRECT,no-resolve
+- MATCH,DEFAULT-JP
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  override-destination: false
+  sniff:
+    HTTP:
+      ports:
+      - 80
+      - 8080-8880
+      override-destination: true
+    TLS:
+      ports:
+      - 443
+      - 8443
+    QUIC:
+      ports:
+      - 443
+      - 8443
+  force-domain:
+  - +.anthropic.com
+  - +.claude.ai
+  - +.claude.com
+  - +.claudeusercontent.com
+  - +.claudemcpclient.com
+  - +.openai.com
+  - +.chatgpt.com
+  - +.oaistatic.com
+  - +.oaiusercontent.com
+  - +.sentry.io
+  - +.datadoghq.com
+  - +.datadoghq.eu
+  - raw.githubusercontent.com
+  - storage.googleapis.com

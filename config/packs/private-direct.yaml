@@ -1,0 +1,54 @@
+id: private-direct
+name: 内网 / LAN / 本机 → DIRECT
+version: 1
+target: direct
+priority: 400
+description: >
+  私网、链路本地、组播、localhost 等必须直连，避免局域网流量进代理。
+sources:
+  - RFC1918 / special-use
+  - Clash common private set
+  - ref/*.yaml
+
+rules:
+  # ---- domains ----
+  - DOMAIN,localhost
+  - DOMAIN-SUFFIX,localhost
+  - DOMAIN-SUFFIX,local
+  - DOMAIN-SUFFIX,lan
+  - DOMAIN-SUFFIX,localdomain
+  - DOMAIN-SUFFIX,home.arpa
+  - DOMAIN-SUFFIX,internal
+  - DOMAIN-SUFFIX,intranet
+  - DOMAIN-SUFFIX,private
+
+  # ---- IPv4 ----
+  - IP-CIDR,0.0.0.0/8,no-resolve
+  - IP-CIDR,10.0.0.0/8,no-resolve
+  - IP-CIDR,100.64.0.0/10,no-resolve
+  - IP-CIDR,127.0.0.0/8,no-resolve
+  - IP-CIDR,169.254.0.0/16,no-resolve
+  - IP-CIDR,172.16.0.0/12,no-resolve
+  - IP-CIDR,192.0.0.0/24,no-resolve
+  - IP-CIDR,192.0.2.0/24,no-resolve
+  - IP-CIDR,192.168.0.0/16,no-resolve
+  - IP-CIDR,198.18.0.0/15,no-resolve
+  - IP-CIDR,198.51.100.0/24,no-resolve
+  - IP-CIDR,203.0.113.0/24,no-resolve
+  - IP-CIDR,224.0.0.0/4,no-resolve
+  - IP-CIDR,255.255.255.255/32,no-resolve
+
+  # ---- IPv6 ----
+  - IP-CIDR6,::1/128,no-resolve
+  - IP-CIDR6,fc00::/7,no-resolve
+  - IP-CIDR6,fe80::/10,no-resolve
+  - IP-CIDR6,ff00::/8,no-resolve
+
+  # mihomo / Loyalsoldier mmdb shortcut
+  - GEOIP,PRIVATE,no-resolve
+
+dns_policy_keys: []
+sniffer_force_domain: []
+
+notes: |
+  priority 最高档之一，保证 LAN 不被后续规则劫持。

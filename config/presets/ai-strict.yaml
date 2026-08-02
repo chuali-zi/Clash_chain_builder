@@ -1,0 +1,14 @@
+id: ai-strict
+name: AI 严格防漏（含全部侧信道）
+version: 1
+description: >
+  与 default 相同，显式强调 Anthropic/OpenAI 侧信道全部强制 HOP2。
+  适合「绝不能漏真实 IP / 机场 IP」的场景。
+compose:
+  - private-direct
+  - anthropic
+  - anthropic-sidechannel
+  - openai
+  - openai-sidechannel
+  - cn-direct
+match: hop1

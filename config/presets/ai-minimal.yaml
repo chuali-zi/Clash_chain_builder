@@ -1,0 +1,12 @@
+id: ai-minimal
+name: AI 最小集合（仅一方域名，无侧信道劫持）
+version: 1
+description: >
+  只强制 Anthropic/OpenAI 一方域名走 HOP2，不劫持 GCS/Sentry/Datadog 等。
+  功能可能正常，但遥测/部分登录流程可能露出其他出口 IP。
+compose:
+  - private-direct
+  - anthropic
+  - openai
+  - cn-direct
+match: hop1
