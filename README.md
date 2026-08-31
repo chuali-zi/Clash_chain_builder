@@ -50,8 +50,9 @@ License: [MIT](./LICENSE)（可自由使用、修改、分发）。
 
 | 项 | 说明 |
 |----|------|
-| Python | 3.9+（推荐 3.12） |
-| 依赖 | `pip install -r requirements.txt`（`pyyaml` / `requests` / `rich`） |
+| uv | 包与虚拟环境（[安装](https://docs.astral.sh/uv/getting-started/installation/)） |
+| Python | 3.9+（`uv sync` 按 `.python-version` 准备，推荐 3.12） |
+| 依赖 | `uv sync`（`pyyaml` / `requests` / `rich`；开发含 pytest） |
 | mihomo | 装了 Clash Verge / mihomo 即可，自动定位（见下），实在找不到再设 `MIHOMO_BIN` |
 | 系统 | Windows / macOS / Linux；测速与验证需要能启动内核 |
 
@@ -80,26 +81,51 @@ clash 不会被误选）：
 排查用：
 
 ```bash
-python -m chain_builder find-core          # 显示选中的内核、来源、版本
-python -m chain_builder find-core --all    # 列出所有候选及其可用性
+uv run python -m chain_builder find-core          # 显示选中的内核、来源、版本
+uv run python -m chain_builder find-core --all    # 列出所有候选及其可用性
 ```
 
 ---
 
 ## 快速开始
 
+先装依赖（只需一次）：
+
 ```bash
-pip install -r requirements.txt
-python -m chain_builder
+uv sync
 ```
+
+没有 uv 时，PowerShell 先执行，然后**新开一个终端**：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+两种模式**问的东西一样**（订阅、落地凭证、选第一跳），测速和出口验证都会自动跑，差别只在生成的 YAML。
+
+### 分流（日常科学上网）
+
+```bash
+uv run python -m chain_builder
+```
+
+Claude / ChatGPT 走第二跳落地，国内直连，其余走机场。
+
+### 全链（开 Claude 时用）
+
+```bash
+uv run python -m chain_builder --full-chain
+```
+
+全部流量走第二跳，TUN 默认开，不设分流。用 Claude 时切到这份配置并开全局 TUN，不用就换回别的。
 
 按提示输入：
 
-1. **机场订阅 URL**（脚本会用 Clash User-Agent 拉取，并尽量加 `flag=clash`）
-2. **第二跳凭证**（见下方格式，任意顺序）
-3. **在 TUI 中选择第一跳**（空回车 = 延迟最低可用节点）
+1. **机场订阅 URL**
+2. **第二跳凭证**（任意顺序，见下方格式）
+3. **第一跳节点**（空回车 = 延迟最低可用节点）
 
-默认使用 `preset:default`，无需再选规则。完成后生成：
+完成后写入：
 
 ```text
 output/<第二跳出口IP>_<属地>.yaml
@@ -107,7 +133,7 @@ output/<第二跳出口IP>_<属地>.yaml
 
 示例：`output/167.253.38.151_US-California.yaml`
 
-导入：Clash Verge → Profiles → 导入本地文件 → 选用该 YAML → 启用代理。
+导入：Clash Verge → Profiles → 导入本地文件 → 选用该 YAML → 启用代理（全链模式再开 TUN）。
 
 ---
 
@@ -136,7 +162,7 @@ ip=1.2.3.4 port=1080 user=u pass=p
 自测解析：
 
 ```bash
-python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
+uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 ```
 
 ---
@@ -161,11 +187,12 @@ python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 |------|------|
 | `default` / `ai-strict` | 含侧信道，防漏优先（默认） |
 | `ai-minimal` | 仅 AI 一方域名走第二跳，不劫持 GCS / Sentry 等 |
+| `full-chain` | 不设分流：全部 `MATCH→CHAIN`，TUN 默认开，DNS 经 CHAIN |
 
 ```bash
-python -m chain_builder presets
-python -m chain_builder show-ruleset --preset default --head 40
-python -m chain_builder show-ruleset --packs anthropic,openai,cn-direct
+uv run python -m chain_builder presets
+uv run python -m chain_builder show-ruleset --preset default --head 40
+uv run python -m chain_builder show-ruleset --packs anthropic,openai,cn-direct
 ```
 
 字段约定见 [`config/SCHEMA.md`](./config/SCHEMA.md)，目录说明见 [`config/README.md`](./config/README.md)。
@@ -175,14 +202,10 @@ python -m chain_builder show-ruleset --packs anthropic,openai,cn-direct
 仍可用：`basic` / `full`（全走链）、`anthropic` / `openai` / `ai`。见：
 
 ```bash
-python -m chain_builder plugins
+uv run python -m chain_builder plugins
 ```
 
-强制全隧道（全部 `MATCH → CHAIN`）：
-
-```bash
-python -m chain_builder build ... --strict-full-chain
-```
+要全部走链、不设分流，用快速开始里的 `--full-chain`，不要抄带 `...` 的示例。
 
 ---
 
@@ -223,33 +246,21 @@ python -m chain_builder build ... --strict-full-chain
 
 ### 严格全隧道模式（可选）
 
-`--strict-full-chain` 时：`MATCH → CHAIN`、可启用更严的 TUN / 本机监听约束。适合「整机只信第二跳」的场景，与默认分流不同。
+请用快速开始里的 `--full-chain`。`--strict-full-chain` 是旧开关，会叠在现有分流预设上强制 `MATCH→CHAIN`，生成的 YAML 更重，一般不用。
 
 ---
 
 ## 常用命令
 
 ```bash
-# 交互向导（默认 preset=default）
-python -m chain_builder
+# 分流（日常）
+uv run python -m chain_builder
 
-# 脚本化构建
-python -m chain_builder build \
-  --url "https://your-sub.example/api/v1/client/subscribe?token=..." \
-  --hop2 "proxy.ipdeep.com:7085:user:pass" \
-  --hop1 "2x专线-日本-2" \
-  --filter 日本
-
-# 指定预设 / 临时组合 pack
-python -m chain_builder build --url ... --hop2 ... --preset ai-minimal
-python -m chain_builder build --url ... --hop2 ... --packs anthropic,openai,cn-direct
-
-# 预览规则 / 列预设
-python -m chain_builder show-ruleset --preset default
-python -m chain_builder presets
+# 全链（开 Claude 时用，向导相同，输出不同）
+uv run python -m chain_builder --full-chain
 
 # 只测第二跳解析
-python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
+uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 ```
 
 ---
@@ -262,6 +273,7 @@ python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 | `--hop2` | 第二跳凭证字符串 |
 | `--hop1` | 第一跳节点名（精确匹配，跳过 TUI） |
 | `--filter` | 节点名过滤关键字（如 `日本` / `jp`） |
+| `--full-chain` | 全链模式：全部走第二跳、TUN 开、不设分流（向导流程不变） |
 | `--preset` | `config/presets` 名，默认 `default`；或 legacy 插件名 |
 | `--packs` | 逗号分隔 pack id，临时组合 |
 | `--match-default` | 覆盖 `MATCH`：`hop1` / `hop2` / `chain` / `direct` / `reject` |
@@ -299,7 +311,8 @@ curl --proxy http://127.0.0.1:7890 https://api.ipify.org
 clash/
 ├── README.md
 ├── LICENSE                 # MIT
-├── requirements.txt
+├── pyproject.toml          # 依赖与项目元数据（uv）
+├── uv.lock
 ├── chain_builder/          # 主程序
 │   ├── cli.py              # 命令行 / 向导
 │   ├── hop2.py             # 第二跳凭证解析
@@ -325,7 +338,7 @@ clash/
 
 1. 在 `config/packs/` 新增 YAML（见 `SCHEMA.md`：`id` / `target` / `priority` / `rules` …）  
 2. 在 `config/presets/*.yaml` 的 `compose` 里引用  
-3. `python -m chain_builder show-ruleset --preset your-preset` 预览  
+3. `uv run python -m chain_builder show-ruleset --preset your-preset` 预览  
 
 也可继续用 legacy `RulePlugin`（`chain_builder/plugins/builtin/` + `registry.py`），但新规则优先放 `config/`。
 
@@ -339,7 +352,7 @@ clash/
 | 第二跳解析失败 | 用 `parse-hop2` 自测；推荐 `host:port:user:pass` |
 | 验证出口失败 | 第一跳延迟过高 / 落地凭证反了（会自动对调一次）/ 网关不可达 |
 | `assert_fail_closed_*` | 生成逻辑自检失败，属程序问题或规则被改坏 |
-| mihomo 找不到 | 先跑 `python -m chain_builder find-core --all` 看候选；仍找不到就设 `MIHOMO_BIN` |
+| mihomo 找不到 | 先跑 `uv run python -m chain_builder find-core --all` 看候选；仍找不到就设 `MIHOMO_BIN` |
 | Claude 仍露机场 IP | 确认用了生成的配置且走 CHAIN；检查是否未开系统代理/TUN；进程是否被规则命中 |
 | 国内站变慢 | 确认命中 DIRECT / `GEOSITE,CN`；必要时加域名到 `cn-direct.yaml` |
 

@@ -14,6 +14,7 @@ from .builder import (
     PRESET_ALIASES,
     build_chain_config,
     dump_yaml,
+    is_simple_full_chain,
     resolve_rules_source,
 )
 from .fetch import fetch_and_parse
@@ -26,6 +27,15 @@ from .verify import validate_config_file, verify_chain
 
 console = Console()
 DEFAULT_OUT_DIR = Path(__file__).resolve().parent.parent / "output"
+
+
+def apply_mode_flags(args: argparse.Namespace) -> argparse.Namespace:
+    """Resolve which YAML mode to emit. --full-chain wins over --preset."""
+    if getattr(args, "full_chain", False):
+        args.preset = "full-chain"
+    elif not getattr(args, "preset", None) and not getattr(args, "packs", None):
+        args.preset = "default"
+    return args
 
 
 def _prompt(msg: str, default: str | None = None) -> str:
@@ -59,7 +69,8 @@ def _resolve_build_rules(args: argparse.Namespace):
     if ruleset is not None:
         # Split routing (DIRECT / MATCH→HOP1) is the point of config presets.
         # --unsafe-split-routing kept for legacy; --strict-full-chain forces tunnel.
-        if getattr(args, "strict_full_chain", False):
+        # full-chain is a first-class all-tunnel preset (no split rules).
+        if getattr(args, "strict_full_chain", False) or is_simple_full_chain(ruleset):
             strict = True
             match_default = "chain"
         else:
@@ -84,11 +95,19 @@ def _resolve_build_rules(args: argparse.Namespace):
 
 
 def cmd_wizard(args: argparse.Namespace) -> None:
+    apply_mode_flags(args)
+    is_full = args.preset == "full-chain"
     console.print(Panel.fit(
         "[bold]Clash 链式代理构建器[/]\n"
-        "订阅 → 选第一跳 → 填第二跳 → 验证出口 → 输出 YAML",
+        "订阅 → 填第二跳 → 选第一跳 → 验证出口 → 输出 YAML",
         title=f"chain-builder v{__version__}",
     ))
+    if is_full:
+        console.print("[cyan]模式:[/] 全链 — 全部走第二跳，TUN 开，不设分流")
+    else:
+        console.print(
+            "[dim]模式:[/] 分流  ·  全链请加 [bold]--full-chain[/]"
+        )
 
     url = args.url or _prompt("机场订阅 URL")
     if not url:
@@ -115,13 +134,6 @@ def cmd_wizard(args: argparse.Namespace) -> None:
         skip_latency=args.no_latency,
         preselect=args.hop1,
     )
-
-    # 无额外参数 → 固定 default：AI→HOP2 / 国内 DIRECT / 其余 HOP1
-    if not args.preset and not args.packs:
-        args.preset = "default"
-        console.print(
-            "[dim]规则预设:[/] default（OpenAI/Anthropic→第二跳，国内→DIRECT，其余→第一跳）"
-        )
 
     ruleset, plugins, label, match_default, strict, custom = _resolve_build_rules(args)
 
@@ -167,6 +179,7 @@ def cmd_wizard(args: argparse.Namespace) -> None:
 
 def cmd_build(args: argparse.Namespace) -> None:
     """Non-interactive build (for scripting)."""
+    apply_mode_flags(args)
     if not args.url or not args.hop2:
         raise SystemExit("build 需要 --url 与 --hop2")
 
@@ -178,9 +191,6 @@ def cmd_build(args: argparse.Namespace) -> None:
         skip_latency=args.no_latency,
         preselect=args.hop1,
     )
-
-    if not args.preset and not args.packs:
-        args.preset = "default"
 
     ruleset, plugins, label, match_default, strict, custom = _resolve_build_rules(args)
 
@@ -285,6 +295,7 @@ def cmd_find_core(args: argparse.Namespace) -> None:
 
 def cmd_show_ruleset(args: argparse.Namespace) -> None:
     """Preview merged rules without building a full profile."""
+    apply_mode_flags(args)
     args.rules_file = getattr(args, "rules_file", None)
     # reuse resolver with a tiny namespace
     ns = argparse.Namespace(
@@ -333,7 +344,12 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument(
             "--preset",
             default=None,
-            help="config/presets 名（默认 default），或 legacy: basic|ai|anthropic",
+            help="config/presets 名（默认 default）；或 legacy: basic|ai|anthropic",
+        )
+        p.add_argument(
+            "--full-chain",
+            action="store_true",
+            help="全链模式：全部走第二跳、TUN 开、不设分流（向导流程不变）",
         )
         p.add_argument(
             "--packs",

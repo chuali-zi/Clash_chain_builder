@@ -1,8 +1,12 @@
 __pycache__/
 *.py[cod]
+*.egg-info/
+dist/
+build/
 .venv/
 venv/
 output/*.yaml
 !output/.gitkeep
 *.log
 .DS_Store
+.pytest_cache/

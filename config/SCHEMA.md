@@ -33,7 +33,7 @@ notes: |
 id: string
 name: string
 description: string
-compose:                   # pack id 列表（也可依赖 priority 自动排序）
+compose:                   # pack id 列表；full-chain 可为空（仅 MATCH）
   - private-direct
   - anthropic
 match: hop1|hop2|direct|reject

@@ -1,0 +1,13 @@
+id: full-chain
+name: 全链（全部 MATCH→CHAIN）
+version: 1
+description: >
+  不设分流规则。全部流量走第二跳链式代理；
+  TUN 默认开启；DNS 经 CHAIN，防止解析泄漏。
+  适合「开 Claude 时切全局 TUN、其余时间不用这份配置」的场景。
+compose: []
+match: hop2
+
+notes: |
+  无 pack。builder 对此预设走精简输出：rules 仅 MATCH,CHAIN，
+  不写 geox-url / HOP1 组 / 内网直连。

@@ -86,8 +86,8 @@ class Preset:
         if not pid:
             raise ValueError(f"预设缺少 id: {path}")
         compose = data.get("compose") or []
-        if not isinstance(compose, list) or not compose:
-            raise ValueError(f"预设 {pid} 的 compose 不能为空")
+        if not isinstance(compose, list):
+            raise ValueError(f"预设 {pid} 的 compose 必须是列表")
         match = str(data.get("match") or "hop1").lower()
         if match == "chain":
             match = "hop2"

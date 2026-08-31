@@ -107,6 +107,106 @@ def resolve_plugins(names: Iterable[str]) -> list[RulePlugin]:
     return [get_plugin(n) for n in names]
 
 
+SIMPLE_FULL_CHAIN_PRESET = "full-chain"
+
+
+def is_simple_full_chain(ruleset: MergedRuleset | None) -> bool:
+    return ruleset is not None and ruleset.preset_id == SIMPLE_FULL_CHAIN_PRESET
+
+
+def _hop_nodes(
+    hop1: dict,
+    hop2: Hop2Creds,
+    *,
+    exit_ip: str | None = None,
+) -> tuple[dict, dict, str, str]:
+    hop1_node = copy.deepcopy(hop1)
+    hop1_name = hop1.get("name", "hop1") or "hop1"
+    hop1_node["name"] = hop1_name
+    label_ip = exit_ip or hop2.exit_ip_hint or hop2.server
+    hop2_name = f"HOP2 {label_ip} - SOCKS5 via hop1"
+    hop2_node = {
+        "name": hop2_name,
+        "type": "socks5",
+        "server": hop2.server,
+        "port": hop2.port,
+        "username": hop2.username,
+        "password": hop2.password,
+        "udp": True,
+        "dialer-proxy": hop1_name,
+    }
+    return hop1_node, hop2_node, hop1_name, hop2_name
+
+
+def build_simple_full_chain_config(
+    hop1: dict,
+    hop2: Hop2Creds,
+    *,
+    exit_ip: str | None = None,
+    custom_rules: list[str] | None = None,
+) -> dict:
+    """Minimal all-CHAIN profile: MATCH,CHAIN only, TUN on, DNS via CHAIN."""
+    hop1_node, hop2_node, hop1_name, hop2_name = _hop_nodes(
+        hop1, hop2, exit_ip=exit_ip
+    )
+    chain_group = "CHAIN"
+    rules = list(custom_rules or []) + ["MATCH,CHAIN"]
+    dns = {
+        "enable": True,
+        "ipv6": True,
+        "enhanced-mode": "fake-ip",
+        "fake-ip-range": "198.18.0.1/16",
+        "use-hosts": True,
+        "respect-rules": True,
+        "default-nameserver": ["223.5.5.5", "8.8.8.8"],
+        "nameserver": [
+            f"https://223.5.5.5/dns-query#{chain_group}&skip-cert-verify=true",
+            f"https://doh.pub/dns-query#{chain_group}&skip-cert-verify=true",
+        ],
+        "proxy-server-nameserver": [
+            "https://223.5.5.5/dns-query#skip-cert-verify=true",
+            "https://doh.pub/dns-query#skip-cert-verify=true",
+        ],
+        "fake-ip-filter": ["*.lan", "*.local", "*.localhost", "*.home.arpa"],
+    }
+    cfg = {
+        "mixed-port": 7890,
+        "allow-lan": False,
+        "bind-address": "127.0.0.1",
+        "mode": "rule",
+        "log-level": "info",
+        "ipv6": True,
+        "unified-delay": True,
+        "tcp-concurrent": True,
+        "find-process-mode": "strict",
+        "profile": {"store-selected": False, "store-fake-ip": True},
+        "tun": {
+            "enable": True,
+            "stack": "mixed",
+            "dns-hijack": ["any:53", "tcp://any:53"],
+            "auto-route": True,
+            "auto-detect-interface": True,
+            "strict-route": True,
+        },
+        "dns": dns,
+        "proxies": [hop2_node, hop1_node],
+        "proxy-groups": [
+            {
+                "name": chain_group,
+                "type": "fallback",
+                "url": "http://www.gstatic.com/generate_204",
+                "interval": 60,
+                "lazy": True,
+                "proxies": [hop2_name, "REJECT"],
+            },
+        ],
+        "rules": rules,
+        "sniffer": {k: v for k, v in _sniffer([]).items() if k != "force-domain"},
+    }
+    assert_fail_closed_config(cfg, hop1_name, hop2_name)
+    return cfg
+
+
 def build_chain_config(
     hop1: dict,
     hop2: Hop2Creds,
@@ -138,6 +238,11 @@ def build_chain_config(
       - "direct": MATCH → DIRECT
       - "reject": MATCH → REJECT
     """
+    if is_simple_full_chain(ruleset):
+        return build_simple_full_chain_config(
+            hop1, hop2, exit_ip=exit_ip, custom_rules=custom_rules
+        )
+
     if ruleset is not None:
         # Config packs drive routing; split by default when preset asks for it.
         if strict_leak_protection is None:

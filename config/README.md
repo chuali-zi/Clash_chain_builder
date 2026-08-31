@@ -17,6 +17,7 @@ config/
     openai-sidechannel.yaml # OpenAI 侧信道 → HOP2
   presets/                  # 组合预设
     default.yaml            # 推荐默认：AI→HOP2，国内→DIRECT，其余→HOP1
+    full-chain.yaml         # 全部 MATCH→CHAIN，无分流，TUN 开
 ```
 
 ## 策略占位符
@@ -51,16 +52,16 @@ rules:
 
 ```bash
 # 列出预设 / 规则包
-python -m chain_builder presets
+uv run python -m chain_builder presets
 
 # 预览合并结果（不生成完整 profile）
-python -m chain_builder show-ruleset --preset default --head 40
+uv run python -m chain_builder show-ruleset --preset default --head 40
 
 # 构建时选用预设（默认就是 default）
-python -m chain_builder build --url ... --hop2 "..." --preset default
+uv run python -m chain_builder build --url ... --hop2 "..." --preset default
 
 # 临时组合若干 pack
-python -m chain_builder show-ruleset --packs anthropic,openai,cn-direct
+uv run python -m chain_builder show-ruleset --packs anthropic,openai,cn-direct
 ```
 
 合并顺序：按各 pack 的 `priority` **从高到低**插入 rules（HOP2 包 priority 高于 DIRECT 包，避免被 CN 兜底误伤）。
