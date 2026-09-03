@@ -18,7 +18,7 @@ from .builder import (
     resolve_rules_source,
 )
 from .fetch import fetch_and_parse
-from .geo import lookup_country, output_filename
+from .geo import lookup_country, output_filename, sanitize_output_name
 from .hop2 import parse_hop2
 from .plugins.registry import list_plugins
 from .ruleset import load_all_packs, load_all_presets
@@ -27,6 +27,17 @@ from .verify import validate_config_file, verify_chain
 
 console = Console()
 DEFAULT_OUT_DIR = Path(__file__).resolve().parent.parent / "output"
+
+
+def resolve_output_path(args: argparse.Namespace, exit_ip: str, country: str) -> Path:
+    """--out (full path) > --name (basename) > IP_region[_full-chain].yaml."""
+    out_dir = Path(args.out_dir) if getattr(args, "out_dir", None) else DEFAULT_OUT_DIR
+    if getattr(args, "out", None):
+        return Path(args.out)
+    if getattr(args, "name", None):
+        return out_dir / sanitize_output_name(args.name)
+    suffix = "full-chain" if getattr(args, "preset", None) == "full-chain" else None
+    return out_dir / output_filename(exit_ip, country, suffix=suffix)
 
 
 def apply_mode_flags(args: argparse.Namespace) -> argparse.Namespace:
@@ -103,7 +114,10 @@ def cmd_wizard(args: argparse.Namespace) -> None:
         title=f"chain-builder v{__version__}",
     ))
     if is_full:
-        console.print("[cyan]模式:[/] 全链 — 全部走第二跳，TUN 开，不设分流")
+        console.print(
+            "[cyan]模式:[/] 全链 — 全部走第二跳，不设分流；"
+            "导入后在 Verge 里切全局、开 TUN、选 CHAIN"
+        )
     else:
         console.print(
             "[dim]模式:[/] 分流  ·  全链请加 [bold]--full-chain[/]"
@@ -156,10 +170,8 @@ def cmd_wizard(args: argparse.Namespace) -> None:
     )
 
     country = lookup_country(exit_ip)
-    fname = output_filename(exit_ip, country)
-    out_dir = Path(args.out_dir) if args.out_dir else DEFAULT_OUT_DIR
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = Path(args.out) if args.out else out_dir / fname
+    out_path = resolve_output_path(args, exit_ip, country)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     msg = validate_config_file(cfg)
     console.print(f"[dim]mihomo -t:[/] {msg}")
@@ -175,6 +187,10 @@ def cmd_wizard(args: argparse.Namespace) -> None:
         f"CHAIN = fallback[hop2, REJECT]（第二跳故障即断）",
         title="完成",
     ))
+    if is_full:
+        console.print(
+            "[cyan]Clash Verge：[/]导入后切 [bold]全局[/] → 开 [bold]TUN[/] → 选 [bold]CHAIN[/]"
+        )
 
 
 def cmd_build(args: argparse.Namespace) -> None:
@@ -212,9 +228,8 @@ def cmd_build(args: argparse.Namespace) -> None:
     msg = validate_config_file(cfg)
     console.print(f"mihomo -t: {msg}")
     country = lookup_country(exit_ip)
-    out_dir = Path(args.out_dir) if args.out_dir else DEFAULT_OUT_DIR
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = Path(args.out) if args.out else out_dir / output_filename(exit_ip, country)
+    out_path = resolve_output_path(args, exit_ip, country)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(dump_yaml(cfg), encoding="utf-8")
     console.print(
         f"Wrote {out_path}  exit={exit_ip} ({country})  rules={label}  n={len(cfg['rules'])}"
@@ -349,7 +364,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument(
             "--full-chain",
             action="store_true",
-            help="全链模式：全部走第二跳、TUN 开、不设分流（向导流程不变）",
+            help="全链模式：全部走第二跳、不设分流；YAML 不嵌入 TUN（向导流程不变）",
         )
         p.add_argument(
             "--packs",
@@ -373,7 +388,8 @@ def build_parser() -> argparse.ArgumentParser:
             help="legacy 插件模式下允许分流（config 预设默认已分流）",
         )
         p.add_argument("--rules-file", help="额外自定义规则文件（每行一条，需含策略）")
-        p.add_argument("--out", help="输出文件路径（默认按 出口IP_属地.yaml）")
+        p.add_argument("--out", help="输出文件路径（最高优先，覆盖 --name 与默认命名）")
+        p.add_argument("--name", help="输出文件名（不含目录；默认目录 ./output）")
         p.add_argument("--out-dir", help="输出目录（默认 ./output）")
         p.add_argument("--no-latency", action="store_true", help="TUI 不测延迟")
         p.add_argument("--no-verify", action="store_true", help="跳过临时内核验证")

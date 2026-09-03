@@ -42,7 +42,7 @@ License: [MIT](./LICENSE)（可自由使用、修改、分发）。
 - **TUI 选节点**：拉取订阅后测延迟，表格展示，按序号 / 关键字选择第一跳
 - **出口验证**：临时启动本机 mihomo，访问 IP 检测站确认真实出口；并做第二跳故障闭锁检查
 - **可组合分流包**：`config/packs` + `config/presets`，默认 AI 走落地、国内直连、其余走机场
-- **命名输出**：`output/<出口IP>_<属地>.yaml`
+- **命名输出**：分流 `output/<出口IP>_<属地>.yaml`，全链自动加 `_full-chain`；也可用 `--name` 自定义文件名
 
 ---
 
@@ -117,7 +117,7 @@ Claude / ChatGPT 走第二跳落地，国内直连，其余走机场。
 uv run python -m chain_builder --full-chain
 ```
 
-全部流量走第二跳，TUN 默认开，不设分流。用 Claude 时切到这份配置并开全局 TUN，不用就换回别的。
+全部流量走第二跳，不设分流。YAML **不**嵌入 TUN（避免和 Verge 的 TUN 开关打架）。导入后在 Clash Verge 里：**切全局 → 开 TUN → 选 CHAIN**。不用这份配置时换回别的即可。
 
 按提示输入：
 
@@ -125,15 +125,18 @@ uv run python -m chain_builder --full-chain
 2. **第二跳凭证**（任意顺序，见下方格式）
 3. **第一跳节点**（空回车 = 延迟最低可用节点）
 
-完成后写入：
+完成后写入（同一落地 IP 的分流 / 全链不再互相覆盖）：
 
 ```text
-output/<第二跳出口IP>_<属地>.yaml
+output/<第二跳出口IP>_<属地>.yaml                 # 分流
+output/<第二跳出口IP>_<属地>_full-chain.yaml      # --full-chain
 ```
 
-示例：`output/167.253.38.151_US-California.yaml`
+示例：`output/167.253.38.151_US-California.yaml`  
+全链：`output/167.253.38.151_US-California_full-chain.yaml`  
+自定义名：`--name my-full` → `output/my-full.yaml`（`--out` 仍可指定完整路径）
 
-导入：Clash Verge → Profiles → 导入本地文件 → 选用该 YAML → 启用代理（全链模式再开 TUN）。
+导入：Clash Verge → Profiles → 导入本地文件 → 选用该 YAML。全链配置再在 Verge 里 **切全局、开 TUN、选 CHAIN**（不要依赖配置文件里的 TUN）。
 
 ---
 
@@ -187,7 +190,7 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 |------|------|
 | `default` / `ai-strict` | 含侧信道，防漏优先（默认） |
 | `ai-minimal` | 仅 AI 一方域名走第二跳，不劫持 GCS / Sentry 等 |
-| `full-chain` | 不设分流：全部 `MATCH→CHAIN`，TUN 默认开，DNS 经 CHAIN |
+| `full-chain` | 不设分流：全部 `MATCH→CHAIN`，不嵌入 TUN，DNS 经 CHAIN；Verge 里切全局 / 开 TUN / 选 CHAIN |
 
 ```bash
 uv run python -m chain_builder presets
@@ -273,13 +276,14 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 | `--hop2` | 第二跳凭证字符串 |
 | `--hop1` | 第一跳节点名（精确匹配，跳过 TUI） |
 | `--filter` | 节点名过滤关键字（如 `日本` / `jp`） |
-| `--full-chain` | 全链模式：全部走第二跳、TUN 开、不设分流（向导流程不变） |
+| `--full-chain` | 全链模式：全部走第二跳、不设分流；YAML 不嵌入 TUN（向导流程不变） |
 | `--preset` | `config/presets` 名，默认 `default`；或 legacy 插件名 |
 | `--packs` | 逗号分隔 pack id，临时组合 |
 | `--match-default` | 覆盖 `MATCH`：`hop1` / `hop2` / `chain` / `direct` / `reject` |
 | `--strict-full-chain` | 强制全隧道 `MATCH→CHAIN` |
 | `--rules-file` | 追加自定义规则（每行一条，需已含策略名） |
-| `--out` / `--out-dir` | 输出路径 / 目录 |
+| `--name` | 输出文件名（写到 `--out-dir`，默认 `./output`；可省略 `.yaml`） |
+| `--out` / `--out-dir` | 完整输出路径（优先于 `--name`） / 输出目录 |
 | `--no-latency` | TUI 不测延迟 |
 | `--no-verify` | 跳过临时内核出口验证（不推荐） |
 | `MIHOMO_BIN` | 环境变量，指定 mihomo / verge-mihomo 路径（自动定位失败时才需要） |
@@ -291,10 +295,11 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 ## 输出与导入
 
 1. 打开 Clash Verge → **Profiles** → 导入刚生成的 YAML  
-2. 选中该配置并启用系统代理 / TUN（按你客户端习惯）  
+2. 选中该配置。全链：在 Verge 里 **切全局、开 TUN、代理列表选 CHAIN**（配置不写死 TUN）。分流：按习惯开系统代理 / TUN，规则会把 AI 送进 CHAIN  
 3. 策略组含义：  
-   - **CHAIN**：AI 等强制第二跳；失败为 REJECT  
-   - **HOP1**：默认境外流量走的第一跳  
+   - **CHAIN**：第二跳链式；失败为 REJECT  
+   - **GLOBAL**（全链）：全局模式列表，默认第一项是 CHAIN  
+   - **HOP1**（分流）：默认境外流量走的第一跳  
 4. 自测出口（应看到**第二跳落地 IP**，而不是机场 IP）：
 
 ```bash

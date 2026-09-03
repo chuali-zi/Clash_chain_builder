@@ -42,8 +42,31 @@ def lookup_country(ip: str, timeout: float = 8.0) -> str:
         return "UNKNOWN"
 
 
-def output_filename(exit_ip: str, country: str | None = None) -> str:
+def sanitize_output_name(name: str) -> str:
+    """Turn --name into a safe basename, adding .yaml when missing."""
+    raw = (name or "").strip()
+    lower = raw.lower()
+    if lower.endswith(".yaml"):
+        stem, ext = raw[:-5], ".yaml"
+    elif lower.endswith(".yml"):
+        stem, ext = raw[:-4], ".yml"
+    else:
+        stem, ext = raw, ".yaml"
+    stem = SAFE_NAME_RE.sub("-", stem).strip("-.")
+    if not stem:
+        raise ValueError("输出文件名无效")
+    return f"{stem}{ext}"
+
+
+def output_filename(
+    exit_ip: str,
+    country: str | None = None,
+    suffix: str | None = None,
+) -> str:
     country = country or lookup_country(exit_ip)
     country = SAFE_NAME_RE.sub("-", country).strip("-") or "UNKNOWN"
     ip_part = SAFE_NAME_RE.sub("-", exit_ip).strip("-")
+    extra = SAFE_NAME_RE.sub("-", suffix or "").strip("-")
+    if extra:
+        return f"{ip_part}_{country}_{extra}.yaml"
     return f"{ip_part}_{country}.yaml"
