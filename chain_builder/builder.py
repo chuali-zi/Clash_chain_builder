@@ -107,11 +107,59 @@ def resolve_plugins(names: Iterable[str]) -> list[RulePlugin]:
     return [get_plugin(n) for n in names]
 
 
+def _chain_select_group(hop2_name: str, chain_group: str = "CHAIN") -> dict:
+    """User-picked CHAIN (Global 模式点这个组). No health-check.
+
+    fallback[hop2, REJECT] + url-test was flipping to REJECT whenever the
+    two-hop probe to gstatic failed, which looks exactly like hop1 dropping.
+    select[hop2] cannot fall through to DIRECT; dead hop2 just fails the
+    connection (same fail-closed, no false REJECT).
+    """
+    return {
+        "name": chain_group,
+        "type": "select",
+        "proxies": [hop2_name],
+    }
+
+
+def _chain_group(hop2_name: str, chain_group: str = "CHAIN") -> dict:
+    """Fail-closed CHAIN for split routing. Health-check is slow so a hop1
+    blip does not flip the group to REJECT.
+    """
+    return {
+        "name": chain_group,
+        "type": "fallback",
+        "url": "https://www.gstatic.com/generate_204",
+        "interval": 300,
+        "timeout": 5000,
+        "lazy": True,
+        "max-failed-times": 5,
+        "proxies": [hop2_name, "REJECT"],
+    }
+
+
+def _global_select_group(chain_group: str, hop1_name: str) -> dict:
+    """Explicit GLOBAL so Clash Verge Global mode lists CHAIN first.
+
+    Mihomo otherwise auto-builds GLOBAL from every proxy/group (messy).
+    hop1 is included only for debug; the user clicks CHAIN.
+    """
+    return {
+        "name": "GLOBAL",
+        "type": "select",
+        "proxies": [chain_group, hop1_name],
+    }
+
+
 SIMPLE_FULL_CHAIN_PRESET = "full-chain"
+AUTO_FULL_CHAIN_PRESET = "full-chain-auto"
+AUTO_HOP1_GROUP = "HOP1-AUTO"
 
 
 def is_simple_full_chain(ruleset: MergedRuleset | None) -> bool:
-    return ruleset is not None and ruleset.preset_id == SIMPLE_FULL_CHAIN_PRESET
+    return ruleset is not None and ruleset.preset_id in {
+        SIMPLE_FULL_CHAIN_PRESET, AUTO_FULL_CHAIN_PRESET
+    }
 
 
 def _hop_nodes(
@@ -144,11 +192,22 @@ def build_simple_full_chain_config(
     *,
     exit_ip: str | None = None,
     custom_rules: list[str] | None = None,
+    hop1_candidates: list[dict] | None = None,
 ) -> dict:
-    """Minimal all-CHAIN profile: MATCH,CHAIN only, TUN on, DNS via CHAIN."""
+    """Minimal all-CHAIN profile for Clash Verge: MATCH,CHAIN, no embedded TUN."""
     hop1_node, hop2_node, hop1_name, hop2_name = _hop_nodes(
         hop1, hop2, exit_ip=exit_ip
     )
+    hop2_node["udp"] = False
+    if hop1_candidates is not None:
+        if not hop1_candidates:
+            raise ValueError("自动第一跳需要至少一个机场节点")
+        candidates = copy.deepcopy(hop1_candidates)
+        names = [p.get("name") for p in candidates]
+        reserved = {"GLOBAL", "CHAIN", AUTO_HOP1_GROUP, hop2_name}
+        if any(not name or name in reserved for name in names) or len(set(names)) != len(names):
+            raise ValueError("机场节点名称为空、重复或与策略组冲突，请用 --filter 缩小范围")
+        hop2_node["dialer-proxy"] = AUTO_HOP1_GROUP
     chain_group = "CHAIN"
     rules = list(custom_rules or []) + ["MATCH,CHAIN"]
     dns = {
@@ -158,10 +217,10 @@ def build_simple_full_chain_config(
         "fake-ip-range": "198.18.0.1/16",
         "use-hosts": True,
         "respect-rules": True,
-        "default-nameserver": ["223.5.5.5", "8.8.8.8"],
+        "default-nameserver": ["system", "223.5.5.5", "8.8.8.8"],
         "nameserver": [
-            f"https://223.5.5.5/dns-query#{chain_group}&skip-cert-verify=true",
-            f"https://doh.pub/dns-query#{chain_group}&skip-cert-verify=true",
+            f"https://223.5.5.5/dns-query#DIRECT&skip-cert-verify=true",
+            f"https://doh.pub/dns-query#DIRECT&skip-cert-verify=true",
         ],
         "proxy-server-nameserver": [
             "https://223.5.5.5/dns-query#skip-cert-verify=true",
@@ -171,8 +230,8 @@ def build_simple_full_chain_config(
     }
     cfg = {
         "mixed-port": 7890,
-        "allow-lan": False,
-        "bind-address": "127.0.0.1",
+        "allow-lan": True,
+        "bind-address": "*",
         "mode": "rule",
         "log-level": "info",
         "ipv6": True,
@@ -180,30 +239,29 @@ def build_simple_full_chain_config(
         "tcp-concurrent": True,
         "find-process-mode": "strict",
         "profile": {"store-selected": False, "store-fake-ip": True},
-        "tun": {
-            "enable": True,
-            "stack": "mixed",
-            "dns-hijack": ["any:53", "tcp://any:53"],
-            "auto-route": True,
-            "auto-detect-interface": True,
-            "strict-route": True,
-        },
         "dns": dns,
-        "proxies": [hop2_node, hop1_node],
+        "proxies": [hop2_node] + (candidates if hop1_candidates is not None else [hop1_node]),
         "proxy-groups": [
-            {
-                "name": chain_group,
-                "type": "fallback",
-                "url": "http://www.gstatic.com/generate_204",
-                "interval": 60,
-                "lazy": True,
-                "proxies": [hop2_name, "REJECT"],
+            _global_select_group(chain_group, hop1_name) if hop1_candidates is None else {
+                "name": "GLOBAL", "type": "select", "proxies": [chain_group]
             },
-        ],
+            _chain_select_group(hop2_name, chain_group),
+        ] + ([{
+            "name": AUTO_HOP1_GROUP,
+            "type": "url-test",
+            "proxies": names,
+            "url": "https://www.gstatic.com/generate_204",
+            "interval": 300,
+            "tolerance": 0,
+            "lazy": False,
+        }] if hop1_candidates is not None else []),
         "rules": rules,
         "sniffer": {k: v for k, v in _sniffer([]).items() if k != "force-domain"},
     }
-    assert_fail_closed_config(cfg, hop1_name, hop2_name)
+    if hop1_candidates is None:
+        assert_fail_closed_config(cfg, hop1_name, hop2_name)
+    else:
+        assert_auto_hop1_config(cfg, hop2_name, names)
     return cfg
 
 
@@ -217,6 +275,7 @@ def build_chain_config(
     exit_ip: str | None = None,
     custom_rules: list[str] | None = None,
     strict_leak_protection: bool | None = None,
+    hop1_candidates: list[dict] | None = None,
 ) -> dict:
     """Build a complete mihomo config.
 
@@ -239,8 +298,11 @@ def build_chain_config(
       - "reject": MATCH → REJECT
     """
     if is_simple_full_chain(ruleset):
+        if ruleset.preset_id == AUTO_FULL_CHAIN_PRESET and hop1_candidates is None:
+            raise ValueError("full-chain-auto 需要机场节点列表")
         return build_simple_full_chain_config(
-            hop1, hop2, exit_ip=exit_ip, custom_rules=custom_rules
+            hop1, hop2, exit_ip=exit_ip, custom_rules=custom_rules,
+            hop1_candidates=hop1_candidates,
         )
 
     if ruleset is not None:
@@ -283,16 +345,7 @@ def build_chain_config(
     hop1_group = "HOP1"
 
     # Fail-closed: if chain unhealthy → REJECT (never fall back to DIRECT/hop1)
-    proxy_groups = [
-        {
-            "name": chain_group,
-            "type": "fallback",
-            "url": "http://www.gstatic.com/generate_204",
-            "interval": 60,
-            "lazy": True,
-            "proxies": [hop2_name, "REJECT"],
-        },
-    ]
+    proxy_groups = [_chain_group(hop2_name, chain_group)]
     need_hop1_group = (not strict_leak_protection) and (
         match_default in {"hop1", "HOP1"}
         or (ruleset is not None and ruleset.uses_hop1)
@@ -412,14 +465,33 @@ def assert_hop2_fail_closed(cfg: dict, hop1_name: str, hop2_name: str) -> None:
     chain = groups.get("CHAIN")
     if not chain:
         raise ValueError("缺少 CHAIN 策略组")
-    if chain.get("proxies") != [hop2_name, "REJECT"]:
+    if chain.get("proxies") not in ([hop2_name, "REJECT"], [hop2_name]):
         raise ValueError(
-            f"CHAIN 必须为 fallback[第二跳, REJECT] 以防漏 IP，实际={chain.get('proxies')}"
+            f"CHAIN 只能包含第二跳（可选 REJECT），禁止 DIRECT/hop1，实际={chain.get('proxies')}"
         )
+    if any(p in {hop1_name, "DIRECT"} for p in (chain.get("proxies") or [])):
+        raise ValueError("CHAIN 不得回落到 DIRECT 或裸 hop1")
 
     dns = cfg.get("dns", {})
     if not dns.get("respect-rules"):
         raise ValueError("防漏要求 dns.respect-rules=true")
+
+
+def assert_auto_hop1_config(cfg: dict, hop2_name: str, candidate_names: list[str]) -> None:
+    """The automatic dialer may choose only airport nodes; CHAIN stays on hop2."""
+    proxies = {p.get("name"): p for p in cfg["proxies"]}
+    groups = {g.get("name"): g for g in cfg["proxy-groups"]}
+    if set(proxies) != {hop2_name, *candidate_names}:
+        raise ValueError("自动第一跳配置包含意外节点")
+    if proxies[hop2_name].get("dialer-proxy") != AUTO_HOP1_GROUP:
+        raise ValueError("第二跳必须通过自动第一跳组拨号")
+    auto = groups.get(AUTO_HOP1_GROUP, {})
+    if auto.get("type") != "url-test" or auto.get("proxies") != candidate_names:
+        raise ValueError("自动第一跳组必须仅包含机场节点")
+    if groups.get("CHAIN", {}).get("proxies") != [hop2_name]:
+        raise ValueError("CHAIN 必须仅包含第二跳")
+    if cfg.get("rules", [])[-1:] != ["MATCH,CHAIN"]:
+        raise ValueError("全链配置必须最终匹配 CHAIN")
 
 
 def assert_default_split_routing(cfg: dict, ruleset: MergedRuleset) -> None:
@@ -478,14 +550,12 @@ def assert_default_split_routing(cfg: dict, ruleset: MergedRuleset) -> None:
 
 
 def assert_fail_closed_config(cfg: dict, hop1_name: str, hop2_name: str) -> None:
-    """Reject a strict full-tunnel config if any path can bypass hop2."""
-    assert_hop2_fail_closed(cfg, hop1_name, hop2_name)
+    """Reject a full-chain config if CHAIN can bypass hop2.
 
-    tun = cfg.get("tun", {})
-    if not tun.get("enable") or not tun.get("strict-route"):
-        raise ValueError("严格防漏要求启用 TUN strict-route")
-    if cfg.get("allow-lan") or cfg.get("bind-address") != "127.0.0.1":
-        raise ValueError("严格防漏只允许本机访问代理端口")
+    TUN is owned by Clash Verge's GUI toggle — do not require tun.enable
+    in YAML. Fail-closed means CHAIN never falls back to DIRECT / bare hop1.
+    """
+    assert_hop2_fail_closed(cfg, hop1_name, hop2_name)
 
     proxies = cfg.get("proxies", [])
     if len(proxies) != 2 or {p.get("name") for p in proxies} != {
@@ -513,8 +583,13 @@ def assert_fail_closed_config(cfg: dict, hop1_name: str, hop2_name: str) -> None
     routed_resolvers = list(dns.get("nameserver", []))
     for resolvers in dns.get("nameserver-policy", {}).values():
         routed_resolvers.extend(resolvers)
-    if any("#CHAIN" not in str(resolver) for resolver in routed_resolvers):
-        raise ValueError("业务 DNS 必须经 CHAIN；仅代理节点引导 DNS 可直连")
+    if routed_resolvers and not (
+        all("#CHAIN" in str(r) for r in routed_resolvers)
+        or all("#DIRECT" in str(r) for r in routed_resolvers)
+    ):
+        raise ValueError(
+            "业务 DNS 必须显式 #CHAIN 或加密 DoH #DIRECT，禁止未标注出口的解析"
+        )
 
 
 PRESET_ALIASES = {

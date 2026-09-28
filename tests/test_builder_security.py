@@ -44,7 +44,7 @@ def test_strict_config_has_no_bypass_path():
 
     hop2 = cfg["proxies"][0]
     assert hop2["dialer-proxy"] == cfg["proxies"][1]["name"]
-    assert hop2["dialer-proxy"].startswith("__HOP1_")
+    assert hop2["dialer-proxy"] == HOP1["name"]
     assert cfg["proxy-groups"][0]["proxies"] == [hop2["name"], "REJECT"]
     assert all("#CHAIN" in resolver for resolver in cfg["dns"]["nameserver"])
 

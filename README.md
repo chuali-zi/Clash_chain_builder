@@ -40,9 +40,10 @@ License: [MIT](./LICENSE)（可自由使用、修改、分发）。
 - **两跳链式代理**：第二跳通过 mihomo `dialer-proxy` 经第一跳拨号（官方推荐写法；`relay` 已废弃）
 - **任意顺序解析第二跳凭证**：`host:port:user:pass`、空格分隔、URL、标签形式等
 - **TUI 选节点**：拉取订阅后测延迟，表格展示，按序号 / 关键字选择第一跳
+- **自动第一跳（可选）**：`full-chain-auto` 把机场节点写入 YAML，由 mihomo 每 300 秒测速并选延迟最低的第一跳
 - **出口验证**：临时启动本机 mihomo，访问 IP 检测站确认真实出口；并做第二跳故障闭锁检查
 - **可组合分流包**：`config/packs` + `config/presets`，默认 AI 走落地、国内直连、其余走机场
-- **命名输出**：分流 `output/<出口IP>_<属地>.yaml`，全链自动加 `_full-chain`；也可用 `--name` 自定义文件名
+- **命名输出**：分流、普通全链和自动全链分别输出独立文件；也可用 `--name` 自定义文件名
 
 ---
 
@@ -101,7 +102,7 @@ uv sync
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-两种模式**问的东西一样**（订阅、落地凭证、选第一跳），测速和出口验证都会自动跑，差别只在生成的 YAML。
+默认分流和普通全链模式会询问订阅、落地凭证和第一跳节点。自动第一跳模式只询问订阅与落地凭证，生成时选一个节点验证链路，导入后由 mihomo 持续测速选择。
 
 ### 分流（日常科学上网）
 
@@ -119,17 +120,32 @@ uv run python -m chain_builder --full-chain
 
 全部流量走第二跳，不设分流。YAML **不**嵌入 TUN（避免和 Verge 的 TUN 开关打架）。导入后在 Clash Verge 里：**切全局 → 开 TUN → 选 CHAIN**。不用这份配置时换回别的即可。
 
+### 全链，第一跳自动选择
+
+```bash
+uv run python -m chain_builder --preset full-chain-auto
+```
+
+生成 `output/<第二跳出口IP>_<属地>_full-chain-auto.yaml`。这个模式会把订阅中的机场节点作为候选，`HOP1-AUTO` 组在 mihomo 运行时定期测速并选延迟最低的节点；第二跳始终是输入的 SOCKS5 地址。`--filter` 可以限定候选节点，`--hop1` 只指定生成时验证链路使用的节点。订阅节点列表是生成时的快照，订阅更新后需重新生成 YAML。导入后同样切全局、开 TUN、选 CHAIN。
+
+例如只让名称包含“日本”的机场节点参与自动选择：
+
+```bash
+uv run python -m chain_builder --preset full-chain-auto --filter 日本
+```
+
 按提示输入：
 
 1. **机场订阅 URL**
 2. **第二跳凭证**（任意顺序，见下方格式）
-3. **第一跳节点**（空回车 = 延迟最低可用节点）
+3. **第一跳节点**（分流和普通全链模式；空回车 = 生成时延迟最低的可用节点）
 
 完成后写入（同一落地 IP 的分流 / 全链不再互相覆盖）：
 
 ```text
 output/<第二跳出口IP>_<属地>.yaml                 # 分流
 output/<第二跳出口IP>_<属地>_full-chain.yaml      # --full-chain
+output/<第二跳出口IP>_<属地>_full-chain-auto.yaml # --preset full-chain-auto
 ```
 
 示例：`output/167.253.38.151_US-California.yaml`  
@@ -190,7 +206,8 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 |------|------|
 | `default` / `ai-strict` | 含侧信道，防漏优先（默认） |
 | `ai-minimal` | 仅 AI 一方域名走第二跳，不劫持 GCS / Sentry 等 |
-| `full-chain` | 不设分流：全部 `MATCH→CHAIN`，不嵌入 TUN，DNS 经 CHAIN；Verge 里切全局 / 开 TUN / 选 CHAIN |
+| `full-chain` | 固定第一跳；全部 `MATCH→CHAIN`，不嵌入 TUN；Verge 里切全局 / 开 TUN / 选 CHAIN |
+| `full-chain-auto` | 第一跳从生成时的机场节点中定期测速自动选择，第二跳固定；其余全链设置同上 |
 
 ```bash
 uv run python -m chain_builder presets
@@ -227,6 +244,8 @@ uv run python -m chain_builder plugins
 
 **含义**：Claude / ChatGPT 业务在链路异常时宁可断连，也不应露出你家宽带 IP 或机场出口 IP。
 
+普通全链和自动全链的 `CHAIN` 只包含第二跳，链路故障时连接失败，不回落到直连或单独的机场节点。自动全链中第二跳的 `dialer-proxy` 指向 `HOP1-AUTO`，该组只包含机场节点。全链配置的 DoH 解析器显式走 `DIRECT`，与默认分流的 AI 域名 DNS 策略不同。
+
 ### 默认分流不会保证的事情
 
 - 走 **HOP1** 或 **DIRECT** 的流量本来就会露出机场 IP 或真实 IP（这是设计如此）  
@@ -259,8 +278,11 @@ uv run python -m chain_builder plugins
 # 分流（日常）
 uv run python -m chain_builder
 
-# 全链（开 Claude 时用，向导相同，输出不同）
+# 固定第一跳的全链
 uv run python -m chain_builder --full-chain
+
+# 第一跳按延迟自动选择的全链
+uv run python -m chain_builder --preset full-chain-auto
 
 # 只测第二跳解析
 uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
@@ -274,7 +296,7 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 |------|------|
 | `--url` | 机场订阅 URL |
 | `--hop2` | 第二跳凭证字符串 |
-| `--hop1` | 第一跳节点名（精确匹配，跳过 TUI） |
+| `--hop1` | 第一跳节点名（精确匹配，跳过 TUI；自动模式仅用于生成时的链路验证） |
 | `--filter` | 节点名过滤关键字（如 `日本` / `jp`） |
 | `--full-chain` | 全链模式：全部走第二跳、不设分流；YAML 不嵌入 TUN（向导流程不变） |
 | `--preset` | `config/presets` 名，默认 `default`；或 legacy 插件名 |
@@ -284,7 +306,7 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 | `--rules-file` | 追加自定义规则（每行一条，需已含策略名） |
 | `--name` | 输出文件名（写到 `--out-dir`，默认 `./output`；可省略 `.yaml`） |
 | `--out` / `--out-dir` | 完整输出路径（优先于 `--name`） / 输出目录 |
-| `--no-latency` | TUI 不测延迟 |
+| `--no-latency` | 跳过生成时的机场测速；自动模式导入后仍会由 mihomo 定期测速 |
 | `--no-verify` | 跳过临时内核出口验证（不推荐） |
 | `MIHOMO_BIN` | 环境变量，指定 mihomo / verge-mihomo 路径（自动定位失败时才需要） |
 
@@ -297,9 +319,10 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 1. 打开 Clash Verge → **Profiles** → 导入刚生成的 YAML  
 2. 选中该配置。全链：在 Verge 里 **切全局、开 TUN、代理列表选 CHAIN**（配置不写死 TUN）。分流：按习惯开系统代理 / TUN，规则会把 AI 送进 CHAIN  
 3. 策略组含义：  
-   - **CHAIN**：第二跳链式；失败为 REJECT  
+   - **CHAIN**：第二跳链式；分流配置故障时回落 REJECT，全链配置故障时连接失败
    - **GLOBAL**（全链）：全局模式列表，默认第一项是 CHAIN  
    - **HOP1**（分流）：默认境外流量走的第一跳  
+   - **HOP1-AUTO**（自动全链）：定期测速，在机场候选节点中选择第一跳
 4. 自测出口（应看到**第二跳落地 IP**，而不是机场 IP）：
 
 ```bash

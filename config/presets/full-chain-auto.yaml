@@ -1,0 +1,8 @@
+id: full-chain-auto
+name: 全链（第一跳自动测速）
+version: 1
+description: >
+  全部流量经第二跳 SOCKS5。第一跳在机场节点中按延迟自动选择，
+  每 300 秒重新测速；机场节点列表取自生成时的订阅快照。
+compose: []
+match: hop2

@@ -22,7 +22,7 @@ from .geo import lookup_country, output_filename, sanitize_output_name
 from .hop2 import parse_hop2
 from .plugins.registry import list_plugins
 from .ruleset import load_all_packs, load_all_presets
-from .tui import pick_hop1
+from .tui import filter_proxies, measure_latencies, pick_hop1
 from .verify import validate_config_file, verify_chain
 
 console = Console()
@@ -36,7 +36,8 @@ def resolve_output_path(args: argparse.Namespace, exit_ip: str, country: str) ->
         return Path(args.out)
     if getattr(args, "name", None):
         return out_dir / sanitize_output_name(args.name)
-    suffix = "full-chain" if getattr(args, "preset", None) == "full-chain" else None
+    preset = getattr(args, "preset", None)
+    suffix = preset if preset in {"full-chain", "full-chain-auto"} else None
     return out_dir / output_filename(exit_ip, country, suffix=suffix)
 
 
@@ -105,12 +106,47 @@ def _resolve_build_rules(args: argparse.Namespace):
     return ruleset, plugins, label, match_default, strict, custom_for_builder
 
 
+def _prepare_hop1(proxies: list[dict], args: argparse.Namespace) -> tuple[dict, list[dict] | None]:
+    if args.preset != "full-chain-auto":
+        return pick_hop1(
+            proxies, filter_keyword=args.filter, skip_latency=args.no_latency,
+            preselect=args.hop1,
+        ), None
+
+    candidates = filter_proxies(proxies, args.filter)
+    if not candidates:
+        raise ValueError("过滤后没有可用的机场节点")
+    if args.hop1:
+        selected = next((p for p in candidates if p.get("name") == args.hop1), None)
+        if selected is None:
+            raise ValueError(f"验证用节点不在候选列表中: {args.hop1}")
+    elif args.no_latency:
+        selected = candidates[0]
+    else:
+        console.print(f"[cyan]正在测试 {len(candidates)} 个第一跳候选节点…[/]")
+        try:
+            delays = measure_latencies(candidates)
+        except Exception as exc:
+            console.print(f"[yellow]测速失败，验证时先用第一个节点:[/] {exc}")
+            delays = {}
+        selected = min(candidates, key=lambda p: delays.get(p["name"]) or float("inf"))
+    console.print(
+        f"[green]自动第一跳:[/] {len(candidates)} 个候选；"
+        f"用 {selected['name']} 验证第二跳，导入后由 mihomo 定期测速选择"
+    )
+    return selected, candidates
+
+
 def cmd_wizard(args: argparse.Namespace) -> None:
     apply_mode_flags(args)
-    is_full = args.preset == "full-chain"
+    is_full = args.preset in {"full-chain", "full-chain-auto"}
+    flow = (
+        "订阅 → 填第二跳 → 自动筛选第一跳 → 验证出口 → 输出 YAML"
+        if args.preset == "full-chain-auto" else
+        "订阅 → 填第二跳 → 选第一跳 → 验证出口 → 输出 YAML"
+    )
     console.print(Panel.fit(
-        "[bold]Clash 链式代理构建器[/]\n"
-        "订阅 → 填第二跳 → 选第一跳 → 验证出口 → 输出 YAML",
+        "[bold]Clash 链式代理构建器[/]\n" + flow,
         title=f"chain-builder v{__version__}",
     ))
     if is_full:
@@ -142,12 +178,7 @@ def cmd_wizard(args: argparse.Namespace) -> None:
     proxies = data["proxies"]
     console.print(f"共 [green]{len(proxies)}[/] 个节点")
 
-    hop1 = pick_hop1(
-        proxies,
-        filter_keyword=args.filter,
-        skip_latency=args.no_latency,
-        preselect=args.hop1,
-    )
+    hop1, hop1_candidates = _prepare_hop1(proxies, args)
 
     ruleset, plugins, label, match_default, strict, custom = _resolve_build_rules(args)
 
@@ -167,6 +198,7 @@ def cmd_wizard(args: argparse.Namespace) -> None:
         exit_ip=exit_ip,
         custom_rules=custom,
         strict_leak_protection=strict,
+        hop1_candidates=hop1_candidates,
     )
 
     country = lookup_country(exit_ip)
@@ -178,13 +210,17 @@ def cmd_wizard(args: argparse.Namespace) -> None:
     out_path.write_text(dump_yaml(cfg), encoding="utf-8")
 
     rule_count = len(cfg.get("rules") or [])
+    chain_summary = (
+        "CHAIN = 仅第二跳（第二跳故障即断）" if is_full else
+        "CHAIN = fallback[hop2, REJECT]（第二跳故障即断）"
+    )
     console.print(Panel.fit(
         f"[green]已写入[/] {out_path}\n"
-        f"hop1 = {hop1.get('name')}\n"
+        f"hop1 = {'自动测速组' if hop1_candidates is not None else hop1.get('name')}\n"
         f"hop2 = {effective.server}:{effective.port} → 出口 {exit_ip} ({country})\n"
         f"规则源 = {label} | 规则数 = {rule_count}\n"
         f"MATCH → {match_default} | 严格全隧道 = {'开' if strict else '关（分流）'}\n"
-        f"CHAIN = fallback[hop2, REJECT]（第二跳故障即断）",
+        f"{chain_summary}",
         title="完成",
     ))
     if is_full:
@@ -201,12 +237,7 @@ def cmd_build(args: argparse.Namespace) -> None:
 
     hop2 = parse_hop2(args.hop2)
     data = fetch_and_parse(args.url)
-    hop1 = pick_hop1(
-        data["proxies"],
-        filter_keyword=args.filter,
-        skip_latency=args.no_latency,
-        preselect=args.hop1,
-    )
+    hop1, hop1_candidates = _prepare_hop1(data["proxies"], args)
 
     ruleset, plugins, label, match_default, strict, custom = _resolve_build_rules(args)
 
@@ -224,6 +255,7 @@ def cmd_build(args: argparse.Namespace) -> None:
         exit_ip=exit_ip,
         custom_rules=custom,
         strict_leak_protection=strict,
+        hop1_candidates=hop1_candidates,
     )
     msg = validate_config_file(cfg)
     console.print(f"mihomo -t: {msg}")
@@ -354,12 +386,12 @@ def build_parser() -> argparse.ArgumentParser:
     def add_common(p: argparse.ArgumentParser) -> None:
         p.add_argument("--url", help="机场订阅 URL")
         p.add_argument("--hop2", help="第二跳凭证（任意顺序）")
-        p.add_argument("--hop1", help="第一跳节点名（精确匹配，跳过 TUI）")
+        p.add_argument("--hop1", help="第一跳节点名；自动模式下仅指定验证用节点")
         p.add_argument("--filter", help="节点名过滤关键字，如 jp / 日本")
         p.add_argument(
             "--preset",
             default=None,
-            help="config/presets 名（默认 default）；或 legacy: basic|ai|anthropic",
+            help="config/presets 名（默认 default；自动第一跳用 full-chain-auto）",
         )
         p.add_argument(
             "--full-chain",

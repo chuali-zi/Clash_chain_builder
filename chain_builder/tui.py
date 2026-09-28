@@ -15,7 +15,7 @@ from .mihomo import MihomoTemp
 console = Console()
 
 
-def _filter_proxies(proxies: list[dict], keyword: str | None) -> list[dict]:
+def filter_proxies(proxies: list[dict], keyword: str | None) -> list[dict]:
     if not keyword:
         return list(proxies)
     keys = [k.strip().lower() for k in keyword.split() if k.strip()]
@@ -93,7 +93,7 @@ def pick_hop1(
                 return p
         raise SystemExit(f"找不到节点: {preselect}")
 
-    filtered = _filter_proxies(proxies, filter_keyword)
+    filtered = filter_proxies(proxies, filter_keyword)
     if not filtered:
         raise SystemExit(f"过滤后无节点（keyword={filter_keyword!r}）")
 
@@ -180,7 +180,7 @@ def pick_hop1(
             console.print("[red]序号越界[/]")
             continue
         # treat as filter refine
-        refined = _filter_proxies(ordered, raw)
+        refined = filter_proxies(ordered, raw)
         if len(refined) == 1:
             console.print(f"[green]已选择:[/] {refined[0]['name']}")
             return refined[0]

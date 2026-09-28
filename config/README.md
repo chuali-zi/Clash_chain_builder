@@ -17,7 +17,8 @@ config/
     openai-sidechannel.yaml # OpenAI 侧信道 → HOP2
   presets/                  # 组合预设
     default.yaml            # 推荐默认：AI→HOP2，国内→DIRECT，其余→HOP1
-    full-chain.yaml         # 全部 MATCH→CHAIN，无分流，TUN 开
+    full-chain.yaml         # 全部 MATCH→CHAIN，无分流；Verge 里切全局/开 TUN/选 CHAIN
+    full-chain-auto.yaml    # 全链；第一跳由 mihomo 对机场节点定期测速自动选取
 ```
 
 ## 策略占位符
