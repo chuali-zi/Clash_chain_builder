@@ -38,11 +38,14 @@ def resolve_output_path(args: argparse.Namespace, exit_ip: str, country: str) ->
         return out_dir / sanitize_output_name(args.name)
     preset = getattr(args, "preset", None)
     suffix = preset if preset in {"full-chain", "full-chain-auto"} else None
+    if getattr(args, "target", "mihomo") == "cfw":
+        suffix = f"{suffix}_cfw" if suffix else "cfw"
     return out_dir / output_filename(exit_ip, country, suffix=suffix)
 
 
 def apply_mode_flags(args: argparse.Namespace) -> argparse.Namespace:
     """Resolve which YAML mode to emit. --full-chain wins over --preset."""
+    args.target = getattr(args, "target", None) or "mihomo"
     if getattr(args, "full_chain", False):
         args.preset = "full-chain"
     elif not getattr(args, "preset", None) and not getattr(args, "packs", None):
@@ -68,6 +71,9 @@ def _load_custom_rules(path: str | None) -> list[str] | None:
 def _resolve_build_rules(args: argparse.Namespace):
     """Return (ruleset, plugins, label, match_default, strict)."""
     extra = _load_custom_rules(getattr(args, "rules_file", None))
+    if getattr(args, "target", "mihomo") == "cfw":
+        from .cfw import validate_custom_rules
+        validate_custom_rules(extra or [])
     ruleset, plugins, label = resolve_rules_source(
         getattr(args, "preset", None),
         packs=getattr(args, "packs", None),
@@ -106,11 +112,57 @@ def _resolve_build_rules(args: argparse.Namespace):
     return ruleset, plugins, label, match_default, strict, custom_for_builder
 
 
+def _core_kwargs(args: argparse.Namespace) -> dict:
+    if getattr(args, "target", "mihomo") == "cfw":
+        return {"target": "cfw", "binary": getattr(args, "_cfw_binary", None) or getattr(args, "cfw_core", None)}
+    return {}
+
+
+def _prepare_cfw_nodes(proxies: list[dict], args: argparse.Namespace) -> list[dict]:
+    from .cfw import filter_compatible_nodes
+    from .cfw_core import find_cfw_core
+
+    args._cfw_binary = find_cfw_core(getattr(args, "cfw_core", None))
+    if not args._cfw_binary and not args.no_verify:
+        raise ValueError("CFW 测速与验证需要 Clash Premium，请设置 CFW_BIN 或 --cfw-core；仅生成可用 --no-verify --no-latency")
+    nodes, rejected = filter_compatible_nodes(filter_proxies(proxies, args.filter))
+    if args._cfw_binary and nodes:
+        def probe(candidate_nodes):
+            return validate_config_file({"dns": {"enable": False}, "proxies": candidate_nodes,
+                                         "proxy-groups": [], "rules": ["MATCH,DIRECT"]}, **_core_kwargs(args))
+        try:
+            probe(nodes)
+        except RuntimeError:
+            valid = []
+            for node in nodes:
+                try:
+                    probe([node])
+                    valid.append(node)
+                except RuntimeError:
+                    rejected.append(f"{node.get('name', '?')}: 参数未通过 Clash Premium 校验")
+            nodes = valid
+    console.print(f"[cyan]CFW 兼容候选:[/] {len(nodes)} 个；排除 {len(rejected)} 个")
+    for reason in rejected[:8]:
+        console.print(f"[dim]  {reason}[/]")
+    if not nodes:
+        raise ValueError("订阅中没有兼容的 CFW 第一跳节点，请使用支持的 SS / VMess / Trojan 等节点")
+    if args.hop1 and not any(n.get("name") == args.hop1 for n in nodes):
+        raise ValueError(f"指定第一跳不兼容 CFW 或不在筛选结果中: {args.hop1}")
+    return nodes
+
+
 def _prepare_hop1(proxies: list[dict], args: argparse.Namespace) -> tuple[dict, list[dict] | None]:
+    extra = {}
+    if getattr(args, "target", "mihomo") == "cfw":
+        proxies = _prepare_cfw_nodes(proxies, args)
+        extra = _core_kwargs(args)
+        if not extra["binary"]:
+            args.no_latency = True
     if args.preset != "full-chain-auto":
         return pick_hop1(
             proxies, filter_keyword=args.filter, skip_latency=args.no_latency,
             preselect=args.hop1,
+            **extra,
         ), None
 
     candidates = filter_proxies(proxies, args.filter)
@@ -125,19 +177,24 @@ def _prepare_hop1(proxies: list[dict], args: argparse.Namespace) -> tuple[dict, 
     else:
         console.print(f"[cyan]正在测试 {len(candidates)} 个第一跳候选节点…[/]")
         try:
-            delays = measure_latencies(candidates)
+            delays = measure_latencies(candidates, **extra)
         except Exception as exc:
             console.print(f"[yellow]测速失败，验证时先用第一个节点:[/] {exc}")
             delays = {}
         selected = min(candidates, key=lambda p: delays.get(p["name"]) or float("inf"))
     console.print(
         f"[green]自动第一跳:[/] {len(candidates)} 个候选；"
-        f"用 {selected['name']} 验证第二跳，导入后由 mihomo 定期测速选择"
+        f"用 {selected['name']} 验证第二跳，导入后由内核定期测速选择"
     )
     return selected, candidates
 
 
 def cmd_wizard(args: argparse.Namespace) -> None:
+    if getattr(args, "target", None) is None:
+        choice = _prompt("客户端：1 = Clash Verge / mihomo，2 = Clash for Windows", "1")
+        if choice not in {"1", "2", "mihomo", "cfw"}:
+            raise ValueError("客户端请选择 1 / 2 / mihomo / cfw")
+        args.target = "cfw" if choice in {"2", "cfw"} else "mihomo"
     apply_mode_flags(args)
     is_full = args.preset in {"full-chain", "full-chain-auto"}
     flow = (
@@ -149,7 +206,9 @@ def cmd_wizard(args: argparse.Namespace) -> None:
         "[bold]Clash 链式代理构建器[/]\n" + flow,
         title=f"chain-builder v{__version__}",
     ))
-    if is_full:
+    if args.target == "cfw":
+        console.print("[cyan]客户端:[/] Clash for Windows；导入后保持规则模式，relay 链路仅支持 TCP")
+    elif is_full:
         console.print(
             "[cyan]模式:[/] 全链 — 全部走第二跳，不设分流；"
             "导入后在 Verge 里切全局、开 TUN、选 CHAIN"
@@ -187,7 +246,7 @@ def cmd_wizard(args: argparse.Namespace) -> None:
         console.print(f"[yellow]跳过验证，使用[/] {exit_ip}")
         effective = hop2
     else:
-        effective, exit_ip, _ = verify_chain(hop1, hop2)
+        effective, exit_ip, _ = verify_chain(hop1, hop2, **_core_kwargs(args))
 
     cfg = build_chain_config(
         hop1,
@@ -199,18 +258,21 @@ def cmd_wizard(args: argparse.Namespace) -> None:
         custom_rules=custom,
         strict_leak_protection=strict,
         hop1_candidates=hop1_candidates,
+        target=args.target,
+        cfw_dns_port=args.cfw_dns_port,
     )
 
     country = lookup_country(exit_ip)
     out_path = resolve_output_path(args, exit_ip, country)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    msg = validate_config_file(cfg)
-    console.print(f"[dim]mihomo -t:[/] {msg}")
+    msg = validate_config_file(cfg, **_core_kwargs(args))
+    console.print(f"[dim]{args.target} -t:[/] {msg}")
     out_path.write_text(dump_yaml(cfg), encoding="utf-8")
 
     rule_count = len(cfg.get("rules") or [])
     chain_summary = (
+        "CHAIN = relay[第一跳, 第二跳]（任意一跳故障即断）" if args.target == "cfw" else
         "CHAIN = 仅第二跳（第二跳故障即断）" if is_full else
         "CHAIN = fallback[hop2, REJECT]（第二跳故障即断）"
     )
@@ -223,7 +285,9 @@ def cmd_wizard(args: argparse.Namespace) -> None:
         f"{chain_summary}",
         title="完成",
     ))
-    if is_full:
+    if args.target == "cfw":
+        console.print("[cyan]CFW：[/]导入后保持 [bold]规则模式[/]；需要接管应用流量时在 CFW 开启系统代理 / TUN。DNS 隧道端口为 " + str(args.cfw_dns_port))
+    elif is_full:
         console.print(
             "[cyan]Clash Verge：[/]导入后切 [bold]全局[/] → 开 [bold]TUN[/] → 选 [bold]CHAIN[/]"
         )
@@ -244,7 +308,7 @@ def cmd_build(args: argparse.Namespace) -> None:
     if args.no_verify:
         effective, exit_ip = hop2, (hop2.exit_ip_hint or hop2.server)
     else:
-        effective, exit_ip, _ = verify_chain(hop1, hop2)
+        effective, exit_ip, _ = verify_chain(hop1, hop2, **_core_kwargs(args))
 
     cfg = build_chain_config(
         hop1,
@@ -256,9 +320,11 @@ def cmd_build(args: argparse.Namespace) -> None:
         custom_rules=custom,
         strict_leak_protection=strict,
         hop1_candidates=hop1_candidates,
+        target=args.target,
+        cfw_dns_port=args.cfw_dns_port,
     )
-    msg = validate_config_file(cfg)
-    console.print(f"mihomo -t: {msg}")
+    msg = validate_config_file(cfg, **_core_kwargs(args))
+    console.print(f"{args.target} -t: {msg}")
     country = lookup_country(exit_ip)
     out_path = resolve_output_path(args, exit_ip, country)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -312,6 +378,11 @@ def cmd_list_presets(_: argparse.Namespace) -> None:
 
 
 def cmd_find_core(args: argparse.Namespace) -> None:
+    if args.target == "cfw":
+        from .cfw_core import find_cfw_core
+        path = find_cfw_core(args.cfw_core)
+        console.print(f"CFW 内核: {path}" if path else "未找到 CFW 内核，请设置 CFW_BIN 或 --cfw-core")
+        return
     from .core_locator import iter_candidates, locate_core, probe_version, searched_locations
 
     if args.all:
@@ -378,12 +449,18 @@ def cmd_show_ruleset(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="chain-builder",
-        description="机场订阅 + 第二跳 SOCKS5 → mihomo 链式配置（读取 config/ 分流包）",
+        description="机场订阅 + 第二跳 SOCKS5 → mihomo / Clash for Windows 链式配置",
     )
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="cmd")
 
     def add_common(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--target", choices=["mihomo", "cfw"], default=None if p is ap else argparse.SUPPRESS,
+                       help="输出客户端；脚本默认 mihomo，向导可选择 Clash for Windows")
+        p.add_argument("--cfw-core", default=None if p is ap else argparse.SUPPRESS,
+                       help="Clash Premium 内核文件路径（或设置 CFW_BIN）")
+        p.add_argument("--cfw-dns-port", type=int, default=10554 if p is ap else argparse.SUPPRESS,
+                       help="CFW 本机 DoH 隧道端口（默认 10554）")
         p.add_argument("--url", help="机场订阅 URL")
         p.add_argument("--hop2", help="第二跳凭证（任意顺序）")
         p.add_argument("--hop1", help="第一跳节点名；自动模式下仅指定验证用节点")
@@ -445,6 +522,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_list_presets)
 
     p = sub.add_parser("find-core", help="定位 mihomo 内核（排查用）")
+    p.add_argument("--target", choices=["mihomo", "cfw"], default=argparse.SUPPRESS)
+    p.add_argument("--cfw-core", default=argparse.SUPPRESS)
     p.add_argument("--all", action="store_true", help="列出所有候选而非只取第一个可用的")
     p.set_defaults(func=cmd_find_core)
 

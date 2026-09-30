@@ -33,6 +33,8 @@ def measure_latencies(
     concurrency: int = 20,
     timeout_ms: int = 4000,
     on_progress: Callable[[int, int], None] | None = None,
+    binary: str | None = None,
+    target: str = "mihomo",
 ) -> dict[str, int | None]:
     """Start temp mihomo with all nodes, query delay API in parallel."""
     # Minimal config for delay testing only
@@ -59,7 +61,15 @@ def measure_latencies(
     }
 
     results: dict[str, int | None] = {p["name"]: None for p in proxies}
-    with MihomoTemp(cfg) as m:
+    if target == "cfw":
+        from .cfw_core import find_cfw_core
+        binary = find_cfw_core(binary)
+        if not binary:
+            raise RuntimeError("CFW 测速需要 Clash Premium，请设置 CFW_BIN 或 --cfw-core")
+        cfg.pop("unified-delay")
+        cfg["proxy-groups"] = []
+        cfg["rules"] = ["MATCH,DIRECT"]
+    with (MihomoTemp(cfg, binary=binary) if binary else MihomoTemp(cfg)) as m:
         names = [p["name"] for p in proxies]
         done = 0
         total = len(names)
@@ -84,6 +94,8 @@ def pick_hop1(
     filter_keyword: str | None = None,
     skip_latency: bool = False,
     preselect: str | None = None,
+    binary: str | None = None,
+    target: str = "mihomo",
 ) -> dict:
     """Interactive hop1 picker. Returns the chosen proxy dict."""
     if preselect:
@@ -116,7 +128,8 @@ def pick_hop1(
                 progress.update(task, completed=done, total=total)
 
             try:
-                latencies = measure_latencies(filtered, on_progress=on_prog)
+                kwargs = {"binary": binary, "target": target} if target == "cfw" else {}
+                latencies = measure_latencies(filtered, on_progress=on_prog, **kwargs)
             except Exception as e:
                 console.print(f"[yellow]测速失败，改为仅列出节点:[/] {e}")
                 latencies = {}

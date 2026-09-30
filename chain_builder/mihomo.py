@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+import copy
 import socket
 import subprocess
 import time
@@ -49,11 +50,25 @@ class MihomoTemp:
         self.ready_timeout = ready_timeout
         self.mixed_port = free_port()
         self.api_port = free_port()
-        self.config = dict(config)
+        self.config = copy.deepcopy(config)
         self.config["mixed-port"] = self.mixed_port
         self.config["external-controller"] = f"127.0.0.1:{self.api_port}"
         self.config.setdefault("secret", "")
         self.config["allow-lan"] = False
+        # CFW DoH tunnels must not collide with an imported profile or another probe.
+        for tunnel in self.config.get("tunnels", []):
+            address = tunnel.get("address", "")
+            if address.startswith("127.0.0.1:"):
+                old_port = address.rsplit(":", 1)[1]
+                new_port = str(free_port())
+                tunnel["address"] = f"127.0.0.1:{new_port}"
+                dns = self.config.get("dns", {})
+                for key in ("nameserver", "fallback"):
+                    if key in dns:
+                        dns[key] = [s.replace(f":{old_port}/", f":{new_port}/") for s in dns[key]]
+                for key, value in dns.get("nameserver-policy", {}).items():
+                    if isinstance(value, str):
+                        dns["nameserver-policy"][key] = value.replace(f":{old_port}/", f":{new_port}/")
         self._proc: subprocess.Popen | None = None
         self._cfg_path: Path | None = None
         self._tmpdir: Path | None = None
@@ -74,6 +89,8 @@ class MihomoTemp:
         import tempfile
 
         self._tmpdir = Path(tempfile.mkdtemp(prefix="chain-mihomo-"))
+        from .cfw_core import copy_country_mmdb
+        copy_country_mmdb(self.binary, self._tmpdir)
         self._cfg_path = self._tmpdir / "config.yaml"
         self._cfg_path.write_text(
             yaml.safe_dump(self.config, allow_unicode=True, sort_keys=False),
@@ -90,7 +107,8 @@ class MihomoTemp:
         )
         out = (test.stdout or "") + (test.stderr or "")
         if test.returncode != 0 and "successful" not in out.lower():
-            raise RuntimeError(f"mihomo 配置校验失败:\n{out}")
+            self.close()
+            raise RuntimeError(f"内核配置校验失败:\n{out}")
 
         self._proc = subprocess.Popen(
             [self.binary, "-f", str(self._cfg_path), "-d", str(self._tmpdir)],
@@ -102,7 +120,8 @@ class MihomoTemp:
         last_err = None
         while time.time() < deadline:
             if self._proc.poll() is not None:
-                raise RuntimeError("mihomo 启动后立即退出")
+                self.close()
+                raise RuntimeError("内核启动后立即退出")
             try:
                 r = requests.get(f"{self.api}/version", timeout=1)
                 if r.ok:

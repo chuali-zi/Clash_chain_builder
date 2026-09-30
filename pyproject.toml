@@ -1,7 +1,7 @@
 [project]
 name = "clash-chain-builder"
 version = "0.2.0"
-description = "机场订阅 + SOCKS5 落地 → mihomo 两跳链式配置"
+description = "机场订阅 + SOCKS5 落地 → mihomo / Clash for Windows 两跳链式配置"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"

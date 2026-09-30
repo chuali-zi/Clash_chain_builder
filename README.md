@@ -1,6 +1,6 @@
 # Clash Chain Builder
 
-用机场订阅节点做**第一跳（中转）**，用购买的 SOCKS5 落地做**第二跳**，一键生成可导入 [Clash Verge](https://github.com/clash-verge-rev/clash-verge-rev) / [mihomo](https://github.com/MetaCubeX/mihomo) 的链式 YAML。
+用机场订阅节点做**第一跳（中转）**，用购买的 SOCKS5 落地做**第二跳**，一键生成可导入 [Clash Verge](https://github.com/clash-verge-rev/clash-verge-rev) / [mihomo](https://github.com/MetaCubeX/mihomo) 的链式 YAML；加 `--target cfw` 可生成原版 Clash for Windows 的兼容配置。
 
 > 🔰 **第一次接触链式代理 / Clash？** 请先看带配图的 **[链式代理保姆级教程](./链式代理教程.md)**，
 > 从「Clash 为什么要读一个 YAML」讲起，本 README 更偏参数速查。
@@ -22,6 +22,7 @@ License: [MIT](./LICENSE)（可自由使用、修改、分发）。
 - [功能一览](#功能一览)
 - [环境要求](#环境要求)
 - [快速开始](#快速开始)
+- [Clash for Windows 兼容模式](#clash-for-windows-兼容模式)
 - [第二跳凭证格式](#第二跳凭证格式)
 - [规则预设与 config/](#规则预设与-config)
 - [防漏 IP 说明](#防漏-ip-说明)
@@ -37,11 +38,12 @@ License: [MIT](./LICENSE)（可自由使用、修改、分发）。
 
 ## 功能一览
 
-- **两跳链式代理**：第二跳通过 mihomo `dialer-proxy` 经第一跳拨号（官方推荐写法；`relay` 已废弃）
+- **两跳链式代理**：mihomo 使用 `dialer-proxy`；原版 CFW 使用旧内核支持的 `relay`
+- **CFW 兼容输出**：`--target cfw`，筛选兼容节点，转换规则与 DNS，使用 Clash Premium 测速和验证
 - **任意顺序解析第二跳凭证**：`host:port:user:pass`、空格分隔、URL、标签形式等
 - **TUI 选节点**：拉取订阅后测延迟，表格展示，按序号 / 关键字选择第一跳
 - **自动第一跳（可选）**：`full-chain-auto` 把机场节点写入 YAML，由 mihomo 每 300 秒测速并选延迟最低的第一跳
-- **出口验证**：临时启动本机 mihomo，访问 IP 检测站确认真实出口；并做第二跳故障闭锁检查
+- **出口验证**：临时启动目标内核，访问 IP 检测站确认真实出口；并做第二跳故障闭锁检查
 - **可组合分流包**：`config/packs` + `config/presets`，默认 AI 走落地、国内直连、其余走机场
 - **命名输出**：分流、普通全链和自动全链分别输出独立文件；也可用 `--name` 自定义文件名
 
@@ -55,6 +57,7 @@ License: [MIT](./LICENSE)（可自由使用、修改、分发）。
 | Python | 3.9+（`uv sync` 按 `.python-version` 准备，推荐 3.12） |
 | 依赖 | `uv sync`（`pyyaml` / `requests` / `rich`；开发含 pytest） |
 | mihomo | 装了 Clash Verge / mihomo 即可，自动定位（见下），实在找不到再设 `MIHOMO_BIN` |
+| CFW（可选） | `--target cfw` 使用 Clash Premium；便携安装可用 `CFW_BIN` / `--cfw-core` 指定内核 |
 | 系统 | Windows / macOS / Linux；测速与验证需要能启动内核 |
 
 Windows 下若节点名乱码，可先执行：
@@ -102,7 +105,7 @@ uv sync
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-默认分流和普通全链模式会询问订阅、落地凭证和第一跳节点。自动第一跳模式只询问订阅与落地凭证，生成时选一个节点验证链路，导入后由 mihomo 持续测速选择。
+向导首先选择客户端（回车选 mihomo，也可用 `--target` 跳过选择）。默认分流和普通全链模式会询问订阅、落地凭证和第一跳节点。自动第一跳模式只询问订阅与落地凭证，生成时选一个节点验证链路，导入后由目标内核持续测速选择。以下快速开始示例以 mihomo / Clash Verge 为例；CFW 的导入步骤见下一节。
 
 ### 分流（日常科学上网）
 
@@ -155,6 +158,60 @@ output/<第二跳出口IP>_<属地>_full-chain-auto.yaml # --preset full-chain-a
 导入：Clash Verge → Profiles → 导入本地文件 → 选用该 YAML。全链配置再在 Verge 里 **切全局、开 TUN、选 CHAIN**（不要依赖配置文件里的 TUN）。
 
 ---
+
+## Clash for Windows 兼容模式
+
+原版 CFW 使用 Clash Premium，不能直接导入 mihomo 的所有配置。`--target cfw` 支持默认分流、`full-chain` 和 `full-chain-auto`；已实测 CFW 0.20.39 自带的 `Clash 2023.08.17-13-gdcc8d87` 内核。更老的内核请用自身的可执行文件校验。
+
+```powershell
+# 便携版：指定内核文件，不能指向 Clash for Windows.exe 主程序
+$env:CFW_BIN = 'D:\Apps\Clash for Windows\resources\static\files\win\x64\clash-win64.exe'
+
+# 默认分流：AI 经两跳，国内直连，其余走机场
+uv run python -m chain_builder --target cfw
+
+# 全链 / 自动第一跳
+uv run python -m chain_builder --target cfw --full-chain
+uv run python -m chain_builder --target cfw --preset full-chain-auto --filter 日本
+
+# 查看找到的原版内核；也可用 --cfw-core 指定文件
+uv run python -m chain_builder find-core --target cfw
+```
+
+内核定位依次检查 `--cfw-core` / `CFW_BIN`、项目目录（含 `bin/`、`core/`）、常见 CFW 安装目录和 PATH。便携安装到其他目录时，直接指定路径最方便。CFW 的节点测速、出口验证和最终 `-t` 校验都使用 Clash Premium，不会用 mihomo 代替。仅生成文件、暂时没有旧内核时，可加 `--no-verify --no-latency`，完成提示会明确显示跳过校验。
+
+默认输出：
+
+```text
+output/<IP>_<属地>_cfw.yaml
+output/<IP>_<属地>_full-chain_cfw.yaml
+output/<IP>_<属地>_full-chain-auto_cfw.yaml
+```
+
+导入到 CFW 的 Profiles 后，**保持 Rule / 规则模式**，再开启 System Proxy；需要接管不走系统代理的应用时，在 CFW 中开启 TUN。全链由 `MATCH,CHAIN` 实现，也保持规则模式。不要沿用前面 Verge 示例的“切全局”步骤：旧内核会重建 GLOBAL 组，里面会出现单跳、直连等选择。配置不嵌入 mihomo 的 TUN 参数。若 CFW 配置了自定义 DNS 覆盖，请确保没有覆盖生成的 DNS 策略和 `hosts`；仅开启系统代理也不会自动接管应用或浏览器自己发送的 DNS。
+
+兼容模式的具体差异：
+
+| 项目 | CFW 输出 |
+|------|----------|
+| 两跳链路 | `CHAIN = relay[第一跳, SOCKS5 落地]`；不使用会被旧内核忽略的 `dialer-proxy` |
+| 自动第一跳 | `HOP1-AUTO` 定期测速，作为 relay 的第一项；候选只包含兼容的机场节点 |
+| 第一跳协议 | SS / SSR / VMess / Trojan / Snell / HTTP / SOCKS5；有内核时还会校验实际参数 |
+| 不兼容节点 | 排除 AnyTLS / VLESS / Hysteria2 / TUIC 等；SS 2022 和 Reality 等参数不能通过删除字段降级 |
+| DNS 策略 | 每个域名对应一个字符串，解决 `cannot unmarshal !!seq into string` |
+| 链式 DNS | Cloudflare DoH 经本机原生 TCP 隧道 → CHAIN → `1.1.1.1:443`，保留 TLS 证书校验；每条策略使用单个解析器 |
+| 引导 DNS | 第一跳服务器域名用独立的直接 DoH 策略，避免全链 DNS 循环；普通分流 DNS 使用 `doh.pub` |
+| GEOSITE | 生成时获取 MetaCubeX 的域名列表并展开，缓存到 `.cache/cfw-geosite/`；最终 YAML 不依赖运行时下载这些列表 |
+| 进程和嗅探 | 保留精确进程名；无法保留进程通配符、进程路径正则和 mihomo sniffer，生成时提示覆盖差异 |
+| UDP | 旧 relay 不支持 UDP；链路仅支持 TCP，无法转发 QUIC / UDP 应用 |
+
+DNS 隧道只监听 `127.0.0.1:10554`。有端口冲突时，加 `--cfw-dns-port 10555` 后重新生成；临时测速/验证会自动使用独立端口，不与已导入配置共用。YAML 内的 `hosts` 将 DNS 客户端对 `1.1.1.1` 的连接导向本机隧道，隧道的远端仍是实际的 `1.1.1.1:443`，不修改 Windows hosts 文件。不要把这个映射地址用作直接 DNS 或第一跳服务器地址。
+
+CFW 下显式 `--strict-full-chain` 会把已有规则的出口也统一到 CHAIN（保留 REJECT），不仅修改 MATCH；全链模式中的自定义规则同样遵循这一行为。
+
+GEOSITE 的可读域名列表不能等价表达所有关键词/正则，CFW 的规则覆盖不完全等同于 mihomo。默认国内集合较大：实测展开配置约 4 MB、旧内核 `-t` 约 6 秒；首次生成还需下载列表。导入后订阅、域名列表有变化时需要重新生成。用户自定义规则中的不兼容语法会报出具体规则，不会悄悄删除。
+
+开发验证可执行 `uv run pytest -q`；设置 `CFW_BIN` 后会同时运行原版 Premium 的配置加载测试。
 
 ## 第二跳凭证格式
 
@@ -231,6 +288,8 @@ uv run python -m chain_builder plugins
 
 ## 防漏 IP 说明
 
+下面的 `dialer-proxy`、`respect-rules`、sniffer 和 GLOBAL 行为针对默认 mihomo 输出；CFW 使用上一节说明的 relay 与 DoH 隧道，进程/嗅探覆盖和 UDP 能力不同。
+
 ### 默认分流下的「AI 路径」防漏
 
 对命中 CHAIN 的流量（Claude / OpenAI 等）：
@@ -294,6 +353,9 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 
 | 参数 | 说明 |
 |------|------|
+| `--target` | `mihomo` / `cfw`；构建命令默认 mihomo，向导可选择客户端 |
+| `--cfw-core` / `CFW_BIN` | CFW 的 Clash Premium 内核文件路径 |
+| `--cfw-dns-port` | CFW 本机 DoH 隧道端口，默认 `10554`；端口冲突时修改并重新生成 |
 | `--url` | 机场订阅 URL |
 | `--hop2` | 第二跳凭证字符串 |
 | `--hop1` | 第一跳节点名（精确匹配，跳过 TUI；自动模式仅用于生成时的链路验证） |
@@ -329,7 +391,7 @@ uv run python -m chain_builder parse-hop2 "proxy.ipdeep.com:7085:user:pass"
 curl --proxy http://127.0.0.1:7890 https://api.ipify.org
 ```
 
-生成前会尽量跑 `mihomo -t`；未找到内核时会提示跳过校验，但仍会写出文件。
+生成前会尽量用目标内核跑 `-t`。mihomo 未找到内核时提示跳过；CFW 正常测速/验证要求有原版内核，显式 `--no-verify --no-latency` 才可仅生成。CFW 的导入步骤和限制见 [兼容模式](#clash-for-windows-兼容模式)。
 
 ---
 

@@ -39,7 +39,7 @@ def _fetch_ip_via_proxy(proxy_url: str, timeout: float = 20.0) -> str | None:
     return None
 
 
-def _verify_broken_hop2_is_closed(hop1: dict, hop2: Hop2Creds) -> None:
+def _verify_broken_hop2_is_closed(hop1: dict, hop2: Hop2Creds, *, target: str = "mihomo", binary: str | None = None) -> None:
     """Inject an unreachable hop2 and ensure CHAIN never falls back to an IP."""
     broken = Hop2Creds(
         server="127.0.0.1",
@@ -52,8 +52,9 @@ def _verify_broken_hop2_is_closed(hop1: dict, hop2: Hop2Creds) -> None:
         broken,
         plugins=[get_plugin("full")],
         match_default="chain",
+        target=target,
     )
-    with MihomoTemp(cfg) as m:
+    with _temp_core(cfg, binary) as m:
         try:
             response = requests.get(
                 IP_CHECK_URLS[0],
@@ -76,12 +77,19 @@ def verify_chain(
     hop2: Hop2Creds,
     *,
     try_swap_userpass: bool = True,
+    target: str = "mihomo",
+    binary: str | None = None,
 ) -> tuple[Hop2Creds, str, dict]:
     """Start temp mihomo with full-chain config, confirm exit IP.
 
     Returns (effective_creds, exit_ip, config_used_for_verify).
     Tries swapped user/pass once if first attempt fails.
     """
+    if target == "cfw":
+        from .cfw_core import find_cfw_core
+        binary = find_cfw_core(binary)
+        if not binary:
+            raise RuntimeError("未找到 CFW 内核，请设置 CFW_BIN 或 --cfw-core")
     attempts = [hop2]
     if try_swap_userpass:
         attempts.append(swap_user_pass(hop2))
@@ -96,9 +104,10 @@ def verify_chain(
             plugins=[get_plugin("full")],
             match_default="chain",
             exit_ip=creds.exit_ip_hint,
+            target=target,
         )
         try:
-            with MihomoTemp(cfg) as m:
+            with _temp_core(cfg, binary) as m:
                 # Ensure CHAIN/fallback picks hop2
                 exit_ip = _fetch_ip_via_proxy(m.proxy_url)
                 if not exit_ip:
@@ -110,7 +119,10 @@ def verify_chain(
                         f"实际出口为 {exit_ip}"
                     )
                 console.print("[cyan]验证故障闭锁[/]（注入不可达第二跳）…")
-                _verify_broken_hop2_is_closed(hop1, creds)
+                if target == "cfw":
+                    _verify_broken_hop2_is_closed(hop1, creds, target=target, binary=binary)
+                else:
+                    _verify_broken_hop2_is_closed(hop1, creds)
                 console.print("[green]故障闭锁通过:[/] 第二跳不可达时无公网出口")
                 # Rebuild with confirmed exit ip in hop2 name
                 final_cfg = build_chain_config(
@@ -119,6 +131,7 @@ def verify_chain(
                     plugins=[get_plugin("full")],
                     match_default="chain",
                     exit_ip=exit_ip,
+                    target=target,
                 )
                 return creds, exit_ip, final_cfg
         except Exception as e:
@@ -128,7 +141,11 @@ def verify_chain(
     raise RuntimeError(f"链式验证失败: {last_err}")
 
 
-def validate_config_file(cfg: dict) -> str:
+def _temp_core(cfg: dict, binary: str | None):
+    return MihomoTemp(cfg, binary=binary) if binary else MihomoTemp(cfg)
+
+
+def validate_config_file(cfg: dict, *, target: str = "mihomo", binary: str | None = None) -> str:
     """Run mihomo -t and return output; raise on failure."""
     import shutil
     import subprocess
@@ -138,12 +155,19 @@ def validate_config_file(cfg: dict) -> str:
     from .core_locator import NO_WINDOW_KW
     from .mihomo import find_mihomo
 
-    binary = find_mihomo()
+    if target == "cfw":
+        from .cfw_core import find_cfw_core
+        binary = find_cfw_core(binary)
+    else:
+        binary = binary or find_mihomo()
     if not binary:
-        return "skip: no mihomo binary"
+        return f"skip: no {target} binary"
 
     tmp = Path(tempfile.mkdtemp(prefix="chain-test-"))
     try:
+        if target == "cfw":
+            from .cfw_core import copy_country_mmdb
+            copy_country_mmdb(binary, tmp)
         path = tmp / "config.yaml"
         path.write_text(dump_yaml(cfg), encoding="utf-8")
         r = subprocess.run(
@@ -152,6 +176,7 @@ def validate_config_file(cfg: dict) -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=60,
             **NO_WINDOW_KW,
         )
         out = ((r.stdout or "") + (r.stderr or "")).strip()

@@ -276,6 +276,8 @@ def build_chain_config(
     custom_rules: list[str] | None = None,
     strict_leak_protection: bool | None = None,
     hop1_candidates: list[dict] | None = None,
+    target: str = "mihomo",
+    cfw_dns_port: int = 10554,
 ) -> dict:
     """Build a complete mihomo config.
 
@@ -297,6 +299,15 @@ def build_chain_config(
       - "direct": MATCH → DIRECT
       - "reject": MATCH → REJECT
     """
+    if target == "cfw":
+        from .cfw import build_cfw_config
+        return build_cfw_config(
+            hop1, hop2, plugins, ruleset=ruleset, match_default=match_default,
+            exit_ip=exit_ip, custom_rules=custom_rules, strict_leak_protection=strict_leak_protection,
+            hop1_candidates=hop1_candidates, dns_port=cfw_dns_port,
+        )
+    if target != "mihomo":
+        raise ValueError(f"未知输出目标: {target}")
     if is_simple_full_chain(ruleset):
         if ruleset.preset_id == AUTO_FULL_CHAIN_PRESET and hop1_candidates is None:
             raise ValueError("full-chain-auto 需要机场节点列表")
